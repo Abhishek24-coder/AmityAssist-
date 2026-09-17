@@ -323,6 +323,58 @@ CREATE TABLE IF NOT EXISTS data_retention_policies (
     description     TEXT NOT NULL,
     last_cleanup_at DATETIME
 );
+
+CREATE TABLE IF NOT EXISTS notesheets (
+    id              TEXT PRIMARY KEY,
+    reference_no    TEXT UNIQUE NOT NULL,
+    title           TEXT NOT NULL,
+    category        TEXT NOT NULL,
+    student_id      TEXT,
+    created_by      TEXT NOT NULL,
+    current_stage   TEXT NOT NULL DEFAULT 'SUPERVISOR',
+    content         TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'IN_REVIEW',
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(student_id) REFERENCES students(id)
+);
+
+CREATE TABLE IF NOT EXISTS notesheet_signatures (
+    id              TEXT PRIMARY KEY,
+    notesheet_id    TEXT NOT NULL,
+    stage           TEXT NOT NULL,
+    officer_id      TEXT NOT NULL,
+    officer_name    TEXT NOT NULL,
+    role            TEXT NOT NULL,
+    action          TEXT NOT NULL,
+    comments        TEXT,
+    signed_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(notesheet_id) REFERENCES notesheets(id)
+);
+
+CREATE TABLE IF NOT EXISTS notesheet_edits (
+    id              TEXT PRIMARY KEY,
+    notesheet_id    TEXT NOT NULL,
+    officer_id      TEXT NOT NULL,
+    officer_role    TEXT NOT NULL,
+    field_name      TEXT NOT NULL,
+    old_value       TEXT,
+    new_value       TEXT NOT NULL,
+    reason          TEXT NOT NULL,
+    edited_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(notesheet_id) REFERENCES notesheets(id)
+);
+
+CREATE TABLE IF NOT EXISTS student_status_history (
+    id              TEXT PRIMARY KEY,
+    student_id      TEXT NOT NULL,
+    previous_status TEXT NOT NULL,
+    new_status      TEXT NOT NULL,
+    reason          TEXT NOT NULL,
+    updated_by      TEXT NOT NULL,
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(student_id) REFERENCES students(id)
+);
 """
 
 # ---------------------------------------------------------------------------
@@ -762,6 +814,14 @@ def init_db() -> None:
     student_columns = [row["name"] for row in cursor.execute("PRAGMA table_info(students)").fetchall()]
     if "campus_code" not in student_columns:
         cursor.execute("ALTER TABLE students ADD COLUMN campus_code TEXT NOT NULL DEFAULT 'NOIDA'")
+    if "status" not in student_columns:
+        cursor.execute("ALTER TABLE students ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE'")
+    if "status_reason" not in student_columns:
+        cursor.execute("ALTER TABLE students ADD COLUMN status_reason TEXT")
+    if "status_updated_at" not in student_columns:
+        cursor.execute("ALTER TABLE students ADD COLUMN status_updated_at DATETIME")
+    if "status_updated_by" not in student_columns:
+        cursor.execute("ALTER TABLE students ADD COLUMN status_updated_by TEXT")
     workflow_columns = [row["name"] for row in cursor.execute("PRAGMA table_info(workflows)").fetchall()]
     if "campus_code" not in workflow_columns:
         cursor.execute("ALTER TABLE workflows ADD COLUMN campus_code TEXT NOT NULL DEFAULT 'NOIDA'")
@@ -856,8 +916,54 @@ def init_db() -> None:
 
     conn.commit()
 
+    # Phase 23: Seed initial digital notesheet sample if empty
+    existing_ns = cursor.execute("SELECT COUNT(*) as count FROM notesheets").fetchone()
+    if existing_ns and existing_ns["count"] == 0:
+        from ..services.notesheet_service import NotesheetService
+        NotesheetService.create_notesheet(
+            title="Lab Safety Disciplinary Inquiry - Student Investigation",
+            category="Disciplinary",
+            created_by="FAC_001",
+            creator_name="Dr. R. K. Sharma",
+            creator_role="Supervisor",
+            student_id="STU005",
+            content={
+                "incident_date": "2026-09-10",
+                "lab_code": "CS-LAB-204",
+                "severity": "High",
+                "ordinance_clause": "Ordinance 14.1 (Campus Discipline & Safety)",
+                "recommended_action": "14-day lab privileges suspension and proctorial hearing",
+                "course_code": "CSE301",
+                "semester": "5",
+            },
+            initial_stage="SUPERVISOR",
+            initial_comments="Initial inquiry report forwarded for HOD endorsement.",
+        )
+
+    # Phase 24: Seed a sample suspended student and history
+    stu005 = cursor.execute("SELECT status FROM students WHERE id = 'STU005'").fetchone()
+    if stu005 and stu005["status"] == "ACTIVE":
+        cursor.execute(
+            """
+            UPDATE students
+            SET status = 'SUSPENDED',
+                status_reason = 'Proctorial Board Inquiry: Chemical Lab Equipment Misuse (Ref: PB-2026-088)',
+                status_updated_at = CURRENT_TIMESTAMP,
+                status_updated_by = 'PROCTOR_OFFICE'
+            WHERE id = 'STU005'
+            """
+        )
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO student_status_history (id, student_id, previous_status, new_status, reason, updated_by)
+            VALUES ('HIST-SEED-001', 'STU005', 'ACTIVE', 'SUSPENDED', 'Proctorial Board Inquiry: Chemical Lab Equipment Misuse (Ref: PB-2026-088)', 'PROCTOR_OFFICE')
+            """
+        )
+    conn.commit()
+
     # Phase 29: Initialize and seed FTS5 policy search index
     from ..services.policy_search_service import PolicySearchService
     PolicySearchService.initialize_fts_index()
 
     print("[DB] Expanded Student Lifecycle Database seeded successfully.")
+

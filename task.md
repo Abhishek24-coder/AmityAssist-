@@ -51,3 +51,33 @@ This task list tracks the active 4-phase execution milestone:
 - `[x]` Build Policy & Voice AI tab in `frontend_flutter/.../digital_counselor_modal.dart` with push-to-talk mic, TTS playback, quick query chips, and 1-tap action navigation.
 - `[x]` Comprehensive test suite: `backend/tests/test_policy_fts_and_voice.py` (8/8 passing).
 - `[x]` Verification: All backend tests pass; Flutter analyze has 0 issues and all tests pass.
+
+---
+
+### Phase 23: Collaborative Digital "Notesheet" Workflow [COMPLETED ✅]
+- `[x]` **Backend Models & Hierarchical State Engine:**
+  - `[x]` Create `notesheets`, `notesheet_signatures`, and `notesheet_edits` tables in database schema.
+  - `[x]` Implement 5-tier hierarchical approval engine in `backend/services/notesheet_service.py` (`SUPERVISOR` ➔ `HOD` ➔ `HOI` ➔ `PRO_VC` ➔ `VC` ➔ `APPROVED`).
+  - `[x]` Implement **In-Flight Collaborative Editing** (`edit_notesheet_field`): senior officers can correct course code typos and dates in-flight with mandatory audit notes without rejecting the document.
+  - `[x]` Add endpoints in `backend/routes/notesheet.py`: create, list with filters, detail with audit trail, action (forward/approve/reject), and in-flight field editing.
+- `[x]` **Frontend Staff Cockpit:**
+  - `[x]` Build `frontend_flutter/.../staff_notesheet_screen.dart` with stage filter, 5-stage progress indicator, in-flight edit modal dialog, and forwarding/approval action toolbar.
+  - `[x]` Add "Digital Notesheets" quick action card in `staff_dashboard_screen.dart`.
+- `[x]` **Verification & Testing:**
+  - `[x]` Comprehensive automated test suite: `backend/tests/test_notesheet_workflow.py` (5/5 tests passing).
+
+---
+
+### Phase 24: Centralized Real-Time Student Status Registry [COMPLETED ✅]
+- `[x]` **Backend State Machine & Access Enforcement:**
+  - `[x]` Add operational status columns (`status`, `status_reason`, `status_updated_at`, `status_updated_by`) to students table and create `student_status_history` audit table.
+  - `[x]` Implement `backend/services/registry_service.py` managing transitions across `ACTIVE`, `UNDER_CLEARANCE`, `WITHDRAWN`, `SUSPENDED`, `DEBARRED` and enforcing entry/attendance locks.
+  - `[x]` Add endpoints in `backend/routes/registry.py`: status lookup, Proctorial update, audit history, course roster warning matrix, and SSE real-time event streaming (`/api/registry/events`).
+  - `[x]` Integrate with auth verification (`/api/auth/verify`) to flag kiosk restrictions and lock warnings.
+- `[x]` **Frontend Faculty & Kiosk UI:**
+  - `[x]` Build `frontend_flutter/.../staff_registry_screen.dart` displaying live roster, warning counts, red locked alert cards, update status dialog, and audit history inspector.
+  - `[x]` Add "Status Registry & Entry Locks" quick action card in `staff_dashboard_screen.dart`.
+- `[x]` **Verification & Testing:**
+  - `[x]` Comprehensive automated test suite: `backend/tests/test_student_registry.py` (5/5 tests passing).
+  - `[x]` Full regression test run: All 143 tests passing with 100% success.
+

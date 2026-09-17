@@ -6,8 +6,8 @@ This document provides the authoritative, phase-by-phase execution status of **U
 
 ## 📊 High-Level Status Summary
 
-* **Phases 0–20 (Foundational Infrastructure & Prototypes):** ✅ **COMPLETED (Verified with 110+ automated tests)**
-* **Phases 21–29 (Real-World Institutional Expansion):** ⏳ **PENDING (Planned for Execution)**
+* **Phases 0–24, 26, 29 (Baseline & Core Institutional Expansion):** ✅ **COMPLETED (Verified with 143+ automated tests)**
+* **Phases 25, 27, 28 (Remaining Institutional Modules):** ⏳ **PENDING (Planned for Execution)**
 
 ---
 
@@ -149,19 +149,19 @@ These phases address the concrete real-world operational problems discovered on 
 * `[x]` Frontend: Add the **"Deduct from Security Deposit"** 1-tap checkbox on the student kiosk screen and staff clearance card.
 * `[x]` Backend: Update clearance state to `CLEARED_VIA_OFFSET` instantly without requiring physical bank visits.
 
-### [ ] Phase 23: Collaborative Digital "Notesheet" Workflow
+### [x] Phase 23: Collaborative Digital "Notesheet" Workflow
 *Goal: Replace physical peons carrying paper folders with a digital, hierarchical approval document featuring in-flight typo corrections.*
-* `[ ]` Backend: Create `backend/routes/notesheet.py` and data models (`notesheets`, `notesheet_signatures`, `notesheet_edits`).
-* `[ ]` Backend: Implement multi-tier approval hierarchy: `Supervisor` $\rightarrow$ `HOD` $\rightarrow$ `HOI (Director)` $\rightarrow$ `Pro-VC` $\rightarrow$ `Vice Chancellor`.
-* `[ ]` Backend: Implement **In-Flight Collaborative Editing**: authorized officers can modify course codes or typos with an audit annotation without rejecting the entire file.
-* `[ ]` Frontend: Build the Digital Notesheet viewer and signature interface in the Staff Portal.
+* `[x]` Backend: Create `backend/routes/notesheet.py` and data models (`notesheets`, `notesheet_signatures`, `notesheet_edits`).
+* `[x]` Backend: Implement multi-tier approval hierarchy: `Supervisor` $\rightarrow$ `HOD` $\rightarrow$ `HOI (Director)` $\rightarrow$ `Pro-VC` $\rightarrow$ `Vice Chancellor`.
+* `[x]` Backend: Implement **In-Flight Collaborative Editing**: authorized officers can modify course codes or typos with an audit annotation without rejecting the entire file.
+* `[x]` Frontend: Build the Digital Notesheet viewer and signature interface in the Staff Portal.
 
-### [ ] Phase 24: Centralized Real-Time Student Status Registry
+### [x] Phase 24: Centralized Real-Time Student Status Registry
 *Goal: Eliminate the communication black hole where faculty miss emails and suspended students attend classes.*
-* `[ ]` Backend: Add operational status flags to student records (`ACTIVE`, `UNDER_CLEARANCE`, `WITHDRAWN`, `SUSPENDED`, `DEBARRED`).
-* `[ ]` Backend: Broadcast status updates via API and WebSocket events upon Proctorial Board action.
-* `[ ]` Frontend: Faculty attendance portal shows instant RED alert banners for suspended students.
-* `[ ]` Frontend: Kiosk terminals and exam barcode scanners display visual entry locks for suspended or debarred students.
+* `[x]` Backend: Add operational status flags to student records (`ACTIVE`, `UNDER_CLEARANCE`, `WITHDRAWN`, `SUSPENDED`, `DEBARRED`).
+* `[x]` Backend: Broadcast status updates via API and SSE events upon Proctorial Board action.
+* `[x]` Frontend: Faculty attendance portal shows instant RED alert banners for suspended students.
+* `[x]` Frontend: Kiosk terminals and exam barcode scanners display visual entry locks for suspended or debarred students.
 
 ### [ ] Phase 25: Real Local Document OCR Verification (Python Tesseract)
 *Goal: Replace simulated mock OCR with real image text extraction to catch mismatched or fraudulent uploads.*

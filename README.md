@@ -24,6 +24,12 @@ Completed baseline:
 - Phase 18 advanced conversational AI: contextual memory summaries, optional Gemini integration settings, safe local fallback, domain guardrails, sentiment metadata, and escalation flags.
 - Phase 19 compliance & audit system: GDPR personal data export, right-to-be-forgotten / anonymization, retention policies, automated cleanup, and tamper-evident audit queries.
 - Phase 20 system parity & polish: real-time system diagnostics matrix (`/api/system/parity-check`), multi-phase end-to-end integration verification, and 100% passing test suite.
+- Phase 21 multi-department clearance: 4 sequential clearance gates (Library, Hostel, Accounts, Registrar) with standardized legal vouchers.
+- Phase 22 smart financial offsetting: 1-tap auto-deduction of minor asset fines (lost ID ₹200) from refundable security deposit.
+- Phase 23 collaborative digital notesheet: hierarchical 5-tier approval chain (`Supervisor` ➔ `HOD` ➔ `HOI` ➔ `Pro-VC` ➔ `VC`) with in-flight collaborative editing and audit logs, eliminating paper peon couriers and file rejections.
+- Phase 24 centralized real-time student status registry: real-time operational state machine (`ACTIVE`, `UNDER_CLEARANCE`, `WITHDRAWN`, `SUSPENDED`, `DEBARRED`), live SSE event broadcast, faculty attendance warning banners, and kiosk entry locks.
+- Phase 26 printable QR token slip: ReportLab vector PDF slip generation with dynamic 2D QR codes linking to public mobile status tracking.
+- Phase 29 intelligent search & policy guidance: SQLite FTS5 sub-5ms BM25 ordinance search, hybrid RAG guidance, and push-to-talk voice endpoints.
 
 Remaining production work:
 
@@ -74,11 +80,10 @@ Student ID: STU001
 ## Tests
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -q
-node --check frontend\js\app.js
+py -m pytest
 ```
 
-The current verified result is `110 passed`.
+The current verified result is `143 passed` with 0 failures.
 
 ## Main Local Prototype Endpoints
 
@@ -98,11 +103,27 @@ POST /api/student/grievances
 GET  /api/withdrawal/guide
 GET  /api/withdrawal/documents
 GET  /api/withdrawal/status/{student_id}
+POST /api/withdrawal/apply
+GET  /api/withdrawal/{ref}/slip
+GET  /api/withdrawal/track/{ref}
 POST /api/documents/upload
 GET  /api/admin/grievances
 POST /api/admin/grievances/{id}/resolve
 GET  /api/admin/documents
 POST /api/admin/documents/{id}/verify
+POST /api/notesheets
+GET  /api/notesheets
+GET  /api/notesheets/{id_or_ref}
+POST /api/notesheets/{id_or_ref}/action
+POST /api/notesheets/{id_or_ref}/edit-field
+GET  /api/registry/status/{student_id}
+POST /api/registry/status/update
+GET  /api/registry/history/{student_id}
+GET  /api/registry/roster/{branch_or_course}
+GET  /api/registry/events
+GET  /api/policy/search?q=...
+POST /api/policy/guide
+POST /api/voice/query
 GET  /api/reports/analytics
 GET  /api/reports/funnel
 GET  /api/reports/bottlenecks

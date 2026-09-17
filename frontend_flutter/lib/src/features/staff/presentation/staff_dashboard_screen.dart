@@ -6,6 +6,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../../core/theme/kiosk_theme.dart';
 import '../../auth/application/auth_provider.dart';
 import '../application/staff_provider.dart';
+import 'staff_notesheet_screen.dart';
+import 'staff_registry_screen.dart';
+
 
 class StaffDashboardScreen extends ConsumerWidget {
   const StaffDashboardScreen({super.key});
@@ -107,6 +110,42 @@ class StaffDashboardScreen extends ConsumerWidget {
                               color: AppColors.successGreen,
                               onTap: () => context.push('/staff/documents'),
                             ).animate().fadeIn(delay: 300.ms).scale(),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Phase 23 & 24 Institutional Desks
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildActionCard(
+                              context: context,
+                              title: 'Digital Notesheets',
+                              value: 'Active',
+                              subtitle: 'Hierarchical Chain & In-Flight Edits',
+                              icon: Icons.description_rounded,
+                              color: AppColors.amityBlue,
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const StaffNotesheetScreen()),
+                              ),
+                            ).animate().fadeIn(delay: 350.ms).scale(),
+                          ),
+                          const SizedBox(width: 24),
+                          Expanded(
+                            child: _buildActionCard(
+                              context: context,
+                              title: 'Status Registry',
+                              value: 'Live',
+                              subtitle: 'Real-Time Entry Locks & Roster',
+                              icon: Icons.shield_rounded,
+                              color: Colors.deepOrange,
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const StaffRegistryScreen()),
+                              ),
+                            ).animate().fadeIn(delay: 400.ms).scale(),
                           ),
                         ],
                       ),

@@ -75,6 +75,10 @@ async def verify_student(request: Request, body: VerifyRequest) -> VerifyRespons
     session_id = create_session(row["id"])
     first_name = row["name"].split()[0]
 
+    stu_status = row["status"] if "status" in row.keys() and row["status"] else "ACTIVE"
+    stu_reason = row["status_reason"] if "status_reason" in row.keys() else None
+    is_restricted = stu_status in ("SUSPENDED", "DEBARRED")
+
     return VerifyResponse(
         verified=True,
         session_id=session_id,
@@ -94,6 +98,10 @@ async def verify_student(request: Request, body: VerifyRequest) -> VerifyRespons
         message=f"Welcome back, {first_name}! How can I assist you today?",
         has_existing_request=has_req,
         request_status=req_status,
+        status=stu_status,
+        status_reason=stu_reason,
+        kiosk_restricted=is_restricted,
+        lock_reason=stu_reason if is_restricted else None,
     )
 
 
