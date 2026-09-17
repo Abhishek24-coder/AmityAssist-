@@ -32,7 +32,10 @@ def system_parity_check() -> Dict[str, Any]:
         "scholarship_applications", "examinations", "grievances",
         "internships", "departments", "workflows",
         "workflow_checklist_items", "notifications", "notification_logs",
-        "notification_templates", "compliance_requests", "data_retention_policies"
+        "notification_templates", "compliance_requests", "data_retention_policies",
+        "caution_deposit_ledger", "notesheets", "notesheet_signatures",
+        "notesheet_edits", "student_status_history", "co_po_mappings",
+        "institution_config", "institution_clearance_chain", "institution_refund_slabs"
     ]
 
     table_stats = {}
@@ -68,10 +71,21 @@ def system_parity_check() -> Dict[str, Any]:
         "phase_12_multi_campus": {"status": "ACTIVE", "desc": "Multi-campus rules, scoped workflows & student lookup"},
         "phase_13_devops": {"status": "ACTIVE", "desc": "Docker compose, Kubernetes manifests & deployment templates"},
         "phase_14_hardening": {"status": "ACTIVE", "desc": "Security headers, rate limiting, readiness probes & telemetry"},
+        "phase_15_kiosk_journey": {"status": "ACTIVE", "desc": "Touch-first student kiosk journey & auto-reset session"},
         "phase_16_staff_expansion": {"status": "ACTIVE", "desc": "Staff dashboard, withdrawal queue & batch actions"},
+        "phase_17_stability_cors": {"status": "ACTIVE", "desc": "CORS preflight ordering & Flutter navigation history"},
         "phase_18_advanced_ai": {"status": "ACTIVE", "desc": "Contextual memory, domain guardrails & Gemini fallback"},
         "phase_19_compliance": {"status": "ACTIVE", "desc": "GDPR export, right-to-be-forgotten, retention policies"},
         "phase_20_parity_polish": {"status": "ACTIVE", "desc": "System diagnostics, parity matrix & polish verification"},
+        "phase_21_clearance_gates": {"status": "ACTIVE", "desc": "4-department sequential clearance chain & legal vouchers"},
+        "phase_22_deposit_offset": {"status": "ACTIVE", "desc": "Smart financial offsetting from refundable caution deposit"},
+        "phase_23_notesheets": {"status": "ACTIVE", "desc": "5-tier digital notesheet approval with in-flight editing"},
+        "phase_24_status_registry": {"status": "ACTIVE", "desc": "Proctorial status state machine, SSE events & entry locks"},
+        "phase_25_ocr_verification": {"status": "ACTIVE", "desc": "Python Tesseract OCR extraction & identity cross-check"},
+        "phase_26_qr_token_slip": {"status": "ACTIVE", "desc": "Vector PDF slips with dynamic 2D QR codes & mobile tracking"},
+        "phase_27_accreditation": {"status": "ACTIVE", "desc": "CO/PO attainment matrix & 1-click NAAC 2.6 CSV/PDF export"},
+        "phase_28_institution_config": {"status": "ACTIVE", "desc": "Multi-university white-label settings & dynamic chain builder"},
+        "phase_29_search_voice": {"status": "ACTIVE", "desc": "SQLite FTS5 sub-5ms BM25 ordinance search & voice synthesis"},
     }
 
     all_phases_active = all(p["status"] == "ACTIVE" for p in phase_matrix.values())

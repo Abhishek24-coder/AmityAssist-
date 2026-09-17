@@ -27,7 +27,7 @@ from backend.middleware.observability import ObservabilityMiddleware, telemetry
 from backend.database.connection import get_connection
 from backend.services.cache_service import cache_service
 from backend.security.rbac import require_any_role
-from backend.routes import auth, chat, documents, status, admin, student, withdrawal, workflows, notifications, forms, reports, campuses, compliance, system, services, policy, voice
+from backend.routes import auth, chat, documents, status, admin, student, withdrawal, workflows, notifications, forms, reports, campuses, compliance, system, services, policy, voice, notesheet, registry, accreditation, institution
 
 
 limiter = Limiter(key_func=get_remote_address, default_limits=[settings.rate_limit_default])
@@ -95,6 +95,11 @@ app.include_router(system.router)
 app.include_router(services.router)
 app.include_router(policy.router)
 app.include_router(voice.router)
+app.include_router(notesheet.router)
+app.include_router(registry.router)
+app.include_router(accreditation.router)
+app.include_router(institution.router)
+
 
 
 @app.get("/api/health", tags=["System"])

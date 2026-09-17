@@ -319,16 +319,17 @@ This document provides the exhaustive, detailed execution breakdown for **every 
 ---
 
 ### Phase 25: Real Local Document OCR Verification (Python Tesseract)
-* **Status:** `[ ] PENDING`
+* **Status:** `[x] COMPLETED`
 * **Objective:** Replace simulated mock OCR with real local image text extraction to catch mismatched or fraudulent uploads.
-* **Technical Stack:** Python `pytesseract`, Pillow (PIL), OpenCV (image binarization).
+* **Technical Stack:** Python `pytesseract`, Pillow (PIL), regex extraction patterns, Flutter Riverpod.
 * **Features Included:**
-  * Local image preprocessing (grayscale, thresholding, noise removal).
-  * Optical Character Recognition extracting Student Name, Enrollment Number, Date, and Amount.
-  * Automated cross-check: `extracted_enrollment_id == logged_in_student_id`.
-  * Staff Document Cockpit displaying the uploaded file side-by-side with extracted OCR fields and confidence badges.
-* **Working Mechanism:** Uploaded images are preprocessed and parsed by Tesseract. The extracted text is parsed with regular expressions for enrollment numbers and dates, automatically flagging matches or mismatches.
-* **Example:** A student uploads a bank deposit receipt. Tesseract reads "Enrollment: STU001 | Date: 12-Aug-2026 | Amount: ₹45,000". The system tags it `Auto-Verified (High Confidence)`, cutting staff review time from 3 minutes to 5 seconds.
+  * Local image preprocessing and character recognition extracting Student Name, Enrollment Number, and Date.
+  * Automated identity cross-check: `extracted_enrollment_id == logged_in_student_id` (`MATCH` / `MISMATCH` / `NOT_FOUND`).
+  * Confidence score calculation based on extraction quality.
+  * Staff Document OCR Cockpit (`staff_document_ocr_screen.dart`) displaying uploaded file side-by-side with OCR metadata and match indicators.
+  * Graceful fallback when Tesseract binary is not installed locally.
+* **Working Mechanism:** Uploaded images are parsed by Tesseract/Pillow. Extracted text is analyzed with regex for student ID patterns and dates, immediately flagging mismatches against the logged-in student record.
+* **Example:** A student uploads an ID card. Tesseract reads "Enrollment: STU001 | Name: John Doe". The system confirms a match with the active session, sets status to `MATCH`, and auto-approves the submission.
 
 ---
 
@@ -347,29 +348,29 @@ This document provides the exhaustive, detailed execution breakdown for **every 
 ---
 
 ### Phase 27: Academic Accreditation & CO/PO Reporting Engine
-* **Status:** `[ ] PENDING`
+* **Status:** `[x] COMPLETED`
 * **Objective:** Eliminate the faculty burden of manually compiling Course Outcome and Program Outcome attainment spreadsheets for NAAC, NBA, and UGC reviews.
-* **Technical Stack:** Python, Pandas, OpenPyXL, SQLite/PostgreSQL.
+* **Technical Stack:** Python, SQLite/PostgreSQL, Flutter Riverpod.
 * **Features Included:**
-  * Course Outcomes (CO1–CO4) to Program Outcomes (PO1–PO12) mapping models.
-  * Automated attainment percentage calculation across internal and external exam marks.
-  * 1-click export of pre-formatted Excel and PDF reports matching NAAC Criterion 2.6.
-  * Accreditation Hub tab in the Staff Portal.
-* **Working Mechanism:** Aggregates assessment marks for all students in a cohort, applies the university's threshold formulas, and outputs a completed attainment matrix.
-* **Example:** The NAAC inspection committee asks for student retention and CO/PO attainment reports. The faculty coordinator clicks "Export NAAC Criterion 2.6 Report" and downloads the completed spreadsheet in 3 seconds.
+  * Course Outcomes (CO1–CO4) to Program Outcomes (PO1–PO12) mapping models with UGC letter-to-numeric scale.
+  * Automated attainment percentage calculation across student assessment marks.
+  * 1-click export of pre-formatted CSV and PDF reports matching NAAC Criterion 2.6.
+  * Accreditation Hub tab (`staff_accreditation_screen.dart`) in the Staff Portal with branch/semester filters and attainment heatmap.
+* **Working Mechanism:** Aggregates assessment grades for all students in a cohort, applies the university's threshold formulas, and outputs a completed attainment matrix.
+* **Example:** The NAAC inspection committee asks for student retention and CO/PO attainment reports. The faculty coordinator clicks "Export NAAC Criterion 2.6 Report" and downloads the completed CSV/PDF report in 3 seconds.
 
 ---
 
 ### Phase 28: Multi-University White-Label Institutional Configurator
-* **Status:** `[ ] PENDING`
+* **Status:** `[x] COMPLETED`
 * **Objective:** Ensure the platform can be deployed by any university campus without modifying code.
 * **Technical Stack:** FastAPI, SQLite/PostgreSQL, Flutter Riverpod.
 * **Features Included:**
   * Institution settings API (`/api/institution/config`).
-  * Configurable branding: University Name, Crest/Logo, Theme Colors, Domain.
-  * Dynamic clearance chain builder: Add, reorder, or remove clearance desks per campus policy.
-  * Custom refund policy builder: Define custom day cutoff brackets and percentage slabs.
-  * Admin Settings UI for campus IT directors.
+  * Configurable branding: University Name, Crest/Logo, Theme Colors, Contact Email/Phone.
+  * Dynamic clearance chain builder (`/api/institution/clearance-chain`): Add, reorder, or remove clearance desks per campus policy.
+  * Custom refund policy builder (`/api/institution/refund-slabs`): Define custom day cutoff brackets and percentage slabs.
+  * Admin Settings UI (`staff_institution_screen.dart`) with interactive clearance chain stepper and refund slab table editor.
 * **Working Mechanism:** All UI views and backend clearance workflows query the active institution's configuration record dynamically.
 * **Example:** An engineering college in Pune adopts UniAssist. The IT Director uploads their crest, sets up a 3-step clearance chain (`HOD` $\rightarrow$ `Accounts` $\rightarrow$ `Principal`), and saves. All kiosk screens update instantly.
 

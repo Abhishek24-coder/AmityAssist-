@@ -55,6 +55,10 @@ class VerifyResponse(BaseModel):
     message: str
     has_existing_request: bool = False
     request_status: Optional[str] = None
+    status: Optional[str] = "ACTIVE"
+    status_reason: Optional[str] = None
+    kiosk_restricted: bool = False
+    lock_reason: Optional[str] = None
 
 
 class StudentLoginRequest(BaseModel):

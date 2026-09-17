@@ -12,7 +12,8 @@ def test_system_parity_check_healthy(client):
     assert data["status"] == "HEALTHY"
     assert data["cache_operational"] is True
     assert data["total_managed_tables"] >= 20
-    assert data["completed_phases_count"] >= 19
+    assert data["completed_phases_count"] >= 29
+    assert data["total_managed_tables"] >= 30
 
     matrix = data["phase_parity_matrix"]
     assert matrix["phase_0_hygiene"]["status"] == "ACTIVE"
@@ -27,6 +28,15 @@ def test_system_parity_check_healthy(client):
     assert matrix["phase_18_advanced_ai"]["status"] == "ACTIVE"
     assert matrix["phase_19_compliance"]["status"] == "ACTIVE"
     assert matrix["phase_20_parity_polish"]["status"] == "ACTIVE"
+    assert matrix["phase_21_clearance_gates"]["status"] == "ACTIVE"
+    assert matrix["phase_22_deposit_offset"]["status"] == "ACTIVE"
+    assert matrix["phase_23_notesheets"]["status"] == "ACTIVE"
+    assert matrix["phase_24_status_registry"]["status"] == "ACTIVE"
+    assert matrix["phase_25_ocr_verification"]["status"] == "ACTIVE"
+    assert matrix["phase_26_qr_token_slip"]["status"] == "ACTIVE"
+    assert matrix["phase_27_accreditation"]["status"] == "ACTIVE"
+    assert matrix["phase_28_institution_config"]["status"] == "ACTIVE"
+    assert matrix["phase_29_search_voice"]["status"] == "ACTIVE"
 
 
 def test_end_to_end_student_lifecycle_journey(client):

@@ -9,9 +9,9 @@ This document tracks **every single functional feature** across the UniAssist pl
 | Category | Total Features | Completed | Pending Roadmap |
 | :--- | :---: | :---: | :---: |
 | **1. Student Kiosk & Self-Service** | 13 | 13 (100%) | 0 |
-| **2. Staff & Institutional Operations** | 8 | 2 | 6 |
-| **3. Security, Data & Core Platform** | 6 | 6 | 0 |
-| **TOTALS** | **27** | **21 (78%)** | **6 (22%)** |
+| **2. Staff & Institutional Operations** | 8 | 4 (50%) | 4 (50%) |
+| **3. Security, Data & Core Platform** | 6 | 6 (100%) | 0 |
+| **TOTALS** | **27** | **23 (85%)** | **4 (15%)** |
 
 ---
 
@@ -140,7 +140,7 @@ This document tracks **every single functional feature** across the UniAssist pl
 * **Phase:** Phase 22
 * **Target Users:** Students with minor unreturned assets or overdue fines during clearance.
 * **Working Mechanism:**
-  * If an asset fine is $\le$ ₹2,000 (e.g., lost plastic ID card ₹200, library overdue fine ₹50), prompts student:
+  * If an asset fine is $\le$ ₹2,00,0 (e.g., lost plastic ID card ₹200, library overdue fine ₹50), prompts student:
     > *"Deduct ₹200 directly from your refundable Security Deposit of ₹10,000?"*
   * Checking the box automatically re-balances the deposit ledger (₹10,000 $\longrightarrow$ ₹9,800) and marks the gate as `CLEARED_VIA_OFFSET`.
   * Eliminates physical bank challan lines and prevents halting a ₹1,00,000 refund over ₹200.
@@ -201,38 +201,38 @@ This document tracks **every single functional feature** across the UniAssist pl
 ---
 
 ### Feature 16: Collaborative Digital "Notesheet" Workflow
-* **Status:** `[PENDING / NOT COMPLETED ⏳]`
+* **Status:** `[COMPLETED ✅]`
 * **Phase:** Phase 23
 * **Target Users:** Faculty supervisors, HODs, Deans/HOIs, Pro-VCs, Vice Chancellors.
 * **Working Mechanism:**
   * Multi-tier digital approval chain replacing physical red paper folders and office peons:
     $$\text{Supervisor} \longrightarrow \text{HOD} \longrightarrow \text{HOI} \longrightarrow \text{Pro-VC} \longrightarrow \text{Vice Chancellor}$$
   * **In-Flight Collaborative Editing:** Senior officers can correct typos, wrong course codes, or dates directly with an audit annotation without rejecting the file or restarting the process.
-* **Code Reference:** `backend/routes/notesheet.py`, `backend/services/notesheet_service.py`.
+* **Code Reference:** `backend/routes/notesheet.py`, `backend/services/notesheet_service.py`, `frontend_flutter/lib/src/features/staff/presentation/staff_notesheet_screen.dart`.
 
 ---
 
 ### Feature 17: Centralized Real-Time Student Status Registry
-* **Status:** `[PENDING / NOT COMPLETED ⏳]`
+* **Status:** `[COMPLETED ✅]`
 * **Phase:** Phase 24
 * **Target Users:** Faculty, Exam Invigilators, Lab Technicians, Proctorial Board.
 * **Working Mechanism:**
   * Centralized status state machine: `ACTIVE`, `UNDER_CLEARANCE`, `WITHDRAWN`, `SUSPENDED`, `DEBARRED`.
-  * When a student is suspended, real-time alerts update across all faculty attendance screens, exam barcode scanners, and campus kiosks.
+  * When a student is suspended, real-time alerts update across all faculty attendance screens, exam barcode scanners, and campus kiosks via live SSE event broadcasting.
   * Ends the communication black hole where faculty miss broadcast emails and unknowingly admit suspended students into labs or exams.
-* **Code Reference:** `backend/routes/student.py`, `backend/services/registry_service.py`.
+* **Code Reference:** `backend/routes/registry.py`, `backend/services/registry_service.py`, `frontend_flutter/lib/src/features/staff/presentation/staff_registry_screen.dart`.
 
 ---
 
 ### Feature 18: Staff Document Cockpit with Local Tesseract OCR
-* **Status:** `[PENDING / NOT COMPLETED ⏳]`
+* **Status:** `[COMPLETED ✅]`
 * **Phase:** Phase 25
 * **Target Users:** Document verification officers, accounts verification staff.
 * **Working Mechanism:**
   * Python Tesseract OCR automatically extracts Name, Enrollment ID, Date, and Amount from uploaded receipts and ID cards.
-  * Automated comparison: `extracted_id == student_id`.
-  * Staff view displays the uploaded document side-by-side with extracted OCR fields and green/amber match badges, cutting review time from 3 minutes to 5 seconds.
-* **Code Reference:** `backend/routes/documents.py`, `frontend_flutter/lib/src/features/staff/presentation/staff_document_screen.dart`.
+  * Automated comparison: `extracted_id == student_id` with `MATCH` / `MISMATCH` / `NOT_FOUND` status.
+  * Staff view displays uploaded document metadata side-by-side with extracted OCR fields and green/amber match badges, cutting review time from 3 minutes to 5 seconds.
+* **Code Reference:** `backend/services/ocr_service.py`, `backend/routes/documents.py`, `frontend_flutter/lib/src/features/staff/presentation/staff_document_ocr_screen.dart`.
 
 ---
 
@@ -248,27 +248,27 @@ This document tracks **every single functional feature** across the UniAssist pl
 ---
 
 ### Feature 20: Academic Accreditation (CO/PO) Attainment Matrix 1-Click Export
-* **Status:** `[PENDING / NOT COMPLETED ⏳]`
+* **Status:** `[COMPLETED ✅]`
 * **Phase:** Phase 27
 * **Target Users:** Faculty coordinators, NAAC/NBA Accreditation Steering Committees.
 * **Working Mechanism:**
   * Automatically aggregates assessment marks and backpaper records, mapping them against Course Outcomes (CO1–CO4) and Program Outcomes (PO1–PO12).
-  * 1-click export of pre-formatted Excel / PDF reports matching NAAC Criterion 2.6 templates.
+  * 1-click export of pre-formatted CSV and PDF reports matching NAAC Criterion 2.6 templates.
   * Relieves faculty from late-night manual spreadsheet compilation.
-* **Code Reference:** `backend/routes/admin.py`, `backend/services/accreditation_service.py`.
+* **Code Reference:** `backend/routes/accreditation.py`, `backend/services/accreditation_service.py`, `frontend_flutter/lib/src/features/staff/presentation/staff_accreditation_screen.dart`.
 
 ---
 
 ### Feature 21: Institutional White-Label Configurator (Multi-University Setup)
-* **Status:** `[PENDING / NOT COMPLETED ⏳]`
+* **Status:** `[COMPLETED ✅]`
 * **Phase:** Phase 28
 * **Target Users:** University IT Directors, System Super-Admins.
 * **Working Mechanism:**
   * Universal administrative panel allowing any institution (Amity, Galgotias, Sharda, DU) to configure:
-    * University Name, Crest/Logo, Theme Colors.
+    * University Name, Crest/Logo, Theme Colors, Contact Email/Phone.
     * Dynamic clearance chain (add, remove, or reorder clearance desks).
     * Custom refund day cutoff brackets and percentage slabs.
-* **Code Reference:** `backend/routes/institution.py`.
+* **Code Reference:** `backend/routes/institution.py`, `backend/services/institution_service.py`, `frontend_flutter/lib/src/features/staff/presentation/staff_institution_screen.dart`.
 
 ---
 
