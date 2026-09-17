@@ -855,4 +855,9 @@ def init_db() -> None:
     )
 
     conn.commit()
+
+    # Phase 29: Initialize and seed FTS5 policy search index
+    from ..services.policy_search_service import PolicySearchService
+    PolicySearchService.initialize_fts_index()
+
     print("[DB] Expanded Student Lifecycle Database seeded successfully.")

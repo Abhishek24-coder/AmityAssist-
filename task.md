@@ -1,36 +1,53 @@
-# Task List — Student Lifecycle Management Platform (AmityAssist)
+# UniAssist Task List: Active Priority Execution Bundle
 
-We will execute the development of AmityAssist in 6 structured phases. We will verify correctness and functionality after each phase.
+This task list tracks the active 4-phase execution milestone:
+**Phase 21 $\longrightarrow$ Phase 22 $\longrightarrow$ Phase 26 $\longrightarrow$ Phase 29**
 
-- `[x]` Phase 1: Database Expansion & Seed Data
-    - `[x]` Update database schema in `seed.py` with expanded student profiles, notices, scholarships, exams, internships, grievances, and staff accounts.
-    - `[x]` Update seed script with rich seed data matching Amity's courses.
-    - `[x]` Verify database initialization and run tests.
-- `[x]` Phase 2: Backend API Routes for Student & Staff Operations
-    - `[x]` Create `backend/routes/student.py` with profile, exams, backpapers, notices, scholarships, and grievances endpoints.
-    - `[x]` Modify `backend/routes/admin.py` to support grievance resolution, document audit logs, and OCR verification.
-    - `[x]` Update `backend/routes/documents.py` with mock Document AI OCR & Fraud detection analysis.
-    - `[x]` Mount student router in `backend/main.py`.
-    - `[x]` Verify endpoints using python testing or pytest.
-- `[x]` Phase 3: Conversational AI Router & FSM Enhancements
-    - `[x]` Update `backend/services/chat_service.py` to route user intents (academics, scholarships, exams, grievances, withdrawals, help).
-    - `[x]` Implement multilingual (Hinglish/Hindi/English) and voice-command routing in the chat logic.
-    - `[x]` Add conversational refund calculations for withdrawals.
-    - `[x]` Verify chatbot FSM state transitions and test suite.
-- `[x]` Phase 4: Modern CSS (Glassmorphism) & Core Dashboard Widgets
-    - `[x]` Redesign `frontend/css/styles.css` with a premium glassmorphic system, circular progress rings, animations, and dark mode toggling.
-    - `[x]` Update `frontend/index.html` structure with the new widgets: personalized welcome, circular academic progress, fee outstanding, hostel allocation status, and targeted notices.
-    - `[x]` Implement client-side theme toggling and tab navigation.
-    - `[x]` Verify UI rendering and basic styling.
-- `[x]` Phase 5: Student Lifecycle View Modules & Voice AI
-    - `[x]` Implement Academics tab (exam results and backpaper registration form).
-    - `[x]` Implement Scholarship Hub tab (scheme discovery and one-click application).
-    - `[x]` Implement Grievance Desk tab (timeline status tracker).
-    - `[x]` Implement Document AI simulation panel (scanning overlay, OCR field results, and fraud warnings).
-    - `[x]` Add voice synthesis and transcription (Web Speech API) inside floating widget.
-    - `[x]` Verify mock document upload, voice toggle, and forms submittal.
-- `[ ]` Phase 6: Multi-Role Staff Portal & E2E Verification
-    - `[ ]` Design and implement Staff Portal tab (approval center, grievance responses, and document audit records).
-    - `[ ]` Hook up staff portal buttons to backend endpoints.
-    - `[ ]` Write automated tests in `backend/tests/` for new endpoints.
-    - `[ ]` Run full pytest suite, verify client-server integration, and create walkthrough.
+---
+
+### Phase 21: Multi-Department "No-Dues" Clearance & Itemized Vouchers [COMPLETED ✅]
+- `[x]` **Backend Models & State Progression:**
+  - `[x]` Define 4-department clearance gates in `backend/models/schemas.py` and `backend/services/withdrawal_workflow.py` (`LIBRARY`, `HOSTEL`, `ACCOUNTS`, `REGISTRAR`).
+  - `[x]` Implement standardized clearance voucher generation with immutable reference ID and official ordinance citations.
+  - `[x]` Add department clearance endpoint: `POST /api/withdrawal/{ref}/clear/{department}` with officer notes and timestamps.
+  - `[x]` Return sequential clearance status in `GET /api/withdrawal/status/{student_id}` and `GET /api/status/{student_id}`.
+- `[x]` **Frontend Kiosk & Student UI:**
+  - `[x]` Update `frontend_flutter/lib/src/features/withdrawal/presentation/withdrawal_home_screen.dart` with an interactive visual timeline stepper and clearance guidance.
+  - `[x]` Display real-time status checkmarks (`[✅ Library]` $\rightarrow$ `[✅ Hostel]` $\rightarrow$ `[⏳ Accounts]` $\rightarrow$ `[⚪ Registrar]`) and voucher cards in `request_status_screen.dart`.
+  - `[x]` Add role-specific clearance buttons and sign-off dialog to `frontend_flutter/lib/src/features/staff/presentation/staff_withdrawal_screen.dart`.
+- `[x]` **Verification & Testing:**
+  - `[x]` Write automated tests in `backend/tests/test_clearance_pipeline.py`.
+  - `[x]` Verify all 119 backend tests pass with zero regressions (`pytest -q`).
+  - `[x]` Verify Flutter tests pass with `flutter test` and `flutter analyze` has 0 issues.
+
+---
+
+### Phase 22: Smart Financial Offsetting (The ₹200 Lost ID Card Solution) [COMPLETED ✅]
+- `[x]` Add `offset_from_caution_deposit` logic in `backend/services/withdrawal_workflow.py`.
+- `[x]` Auto-deduct asset replacement fines ($\le$ ₹2,000) from refundable security deposit (`caution_deposit_ledger`).
+- `[x]` Add 1-tap "Deduct from Security Deposit" checkbox to Flutter kiosk and staff clearance cards.
+- `[x]` Automated test verification for deposit ledger re-balancing (`backend/tests/test_smart_deposit_offset.py`).
+- `[x]` Verify all 122 backend tests pass with zero regressions (`pytest -q`).
+- `[x]` Verify Flutter `flutter analyze` has 0 issues and all tests pass.
+
+---
+
+### Phase 26: Printable QR Token Slip & Mobile Tracking Handshake [COMPLETED ✅]
+- `[x]` Implement `backend/services/token_pdf_service.py` to generate branded 1-page PDF slips with dynamic 2D QR codes.
+- `[x]` Add endpoint `GET /api/withdrawal/{ref}/slip` returning the PDF stream.
+- `[x]` Add public tracking endpoint `GET /api/withdrawal/track/{ref}` returning sanitized clearance progress.
+- `[x]` Add "Download / Print QR Token Slip" button to Flutter `_ClearanceVoucherCard` in `request_status_screen.dart`.
+- `[x]` Build responsive public token tracking banner and modal dialog in `guest_services_screen.dart` with live 4-gate handshake and slip download.
+- `[x]` Automated test suite: `backend/tests/test_token_slip_and_tracking.py` (all 3/3 passing).
+- `[x]` Verification: All 125 backend tests pass with 100% success; Flutter analyze has 0 issues and all tests pass.
+
+---
+
+### Phase 29: Intelligent Search & Policy Guidance (SQLite FTS5 / Hybrid RAG & Voice) [COMPLETED ✅]
+- `[x]` Create SQLite `FTS5` virtual table indexing university handbooks, ordinances, and refund policies (`backend/services/policy_search_service.py`).
+- `[x]` Add endpoint `GET /api/policy/search?q=...` with sub-5ms BM25 keyword ranking and `<mark>` snippet generation.
+- `[x]` Add hybrid RAG endpoint `POST /api/policy/guide` cross-referencing live student profile (attendance condonation, withdrawal refund slabs, caution deposit offset).
+- `[x]` Add voice endpoint `POST /api/voice/query` with speech synthesis parameters and natural cadence text.
+- `[x]` Build Policy & Voice AI tab in `frontend_flutter/.../digital_counselor_modal.dart` with push-to-talk mic, TTS playback, quick query chips, and 1-tap action navigation.
+- `[x]` Comprehensive test suite: `backend/tests/test_policy_fts_and_voice.py` (8/8 passing).
+- `[x]` Verification: All backend tests pass; Flutter analyze has 0 issues and all tests pass.

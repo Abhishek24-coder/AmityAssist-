@@ -27,7 +27,7 @@ from backend.middleware.observability import ObservabilityMiddleware, telemetry
 from backend.database.connection import get_connection
 from backend.services.cache_service import cache_service
 from backend.security.rbac import require_any_role
-from backend.routes import auth, chat, documents, status, admin, student, withdrawal, workflows, notifications, forms, reports, campuses, compliance, system, services
+from backend.routes import auth, chat, documents, status, admin, student, withdrawal, workflows, notifications, forms, reports, campuses, compliance, system, services, policy, voice
 
 
 limiter = Limiter(key_func=get_remote_address, default_limits=[settings.rate_limit_default])
@@ -62,7 +62,12 @@ app.mount("/forms", StaticFiles(directory=str(forms_dir)), name="forms")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
-# ── CORS (added first so it wraps all other middleware — handles preflight) ──
+# ── Security headers ──────────────────────────────────────────────────────────
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(ObservabilityMiddleware)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
+
+# ── CORS (added last so it wraps all other middleware — handles preflight first) ──
 cors_kwargs = {"allow_origins": list(settings.cors_origins)} if settings.is_production else {"allow_origin_regex": ".*"}
 app.add_middleware(
     CORSMiddleware,
@@ -71,11 +76,6 @@ app.add_middleware(
     allow_headers=["*"],
     **cors_kwargs
 )
-
-# ── Security headers ──────────────────────────────────────────────────────────
-app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(ObservabilityMiddleware)
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 app.include_router(auth.router)
@@ -93,6 +93,8 @@ app.include_router(forms.router)
 app.include_router(compliance.router)
 app.include_router(system.router)
 app.include_router(services.router)
+app.include_router(policy.router)
+app.include_router(voice.router)
 
 
 @app.get("/api/health", tags=["System"])

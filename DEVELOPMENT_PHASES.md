@@ -144,24 +144,18 @@ Remaining Phase 3 hardening:
 - Add richer multilingual response templates.
 - Add tests for every frontend-visible lifecycle chat path.
 
-## Immediate Next Phase - Staff Portal
+## Institutional Expansion Progress (Phases 21–29)
 
-The next teammate-friendly chunk is the staff portal.
+### Completed Expansion Phases:
+- **`[x]` Phase 21: Multi-Department "No-Dues" Clearance & Itemized Vouchers** (Sequential 4-gate digital clearance chain: Library, Hostel, Accounts, Registrar).
+- **`[x]` Phase 22: Smart Financial Offsetting** (1-tap auto-deduction of ₹200 lost ID / asset fines from refundable caution deposit).
+- **`[x]` Phase 26: Printable QR Token Slip & Mobile Tracking Handshake** (Vector PDF slip with dynamic 2D QR code and public mobile tracking handshake).
+- **`[x]` Phase 29: Intelligent Search & Policy Guidance** (SQLite FTS5 sub-5ms BM25 ordinance search, hybrid RAG advice engine, push-to-talk voice and TTS audio).
 
-Build:
+### Remaining Operational Phases:
+- **`[ ]` Phase 23: Collaborative Digital "Notesheet" Workflow** (Hierarchical multi-tier approvals with in-flight typo annotations).
+- **`[ ]` Phase 24: Centralized Real-Time Student Status Registry** (Proctorial Board status broadcast and live faculty/kiosk locks).
+- **`[ ]` Phase 25: Real Local Document OCR Verification** (Python Tesseract text extraction for enrollment IDs and deposit receipts).
+- **`[ ]` Phase 27: Academic Accreditation (CO/PO) Attainment Engine** (Automated Course/Program Outcome attainment and 1-click NAAC Criterion 2.6 export).
+- **`[ ]` Phase 28: Multi-University White-Label Institutional Configurator** (Drag-and-drop clearance desk builder and branding customization).
 
-- Continue the student-facing kiosk in `frontend_flutter/`, not the HTML prototype.
-- Staff role selector or staff login mode.
-- Staff Portal tab in `frontend/index.html`.
-- Admin dashboard cards using `/api/admin/stats`.
-- Grievance queue using `/api/admin/grievances`.
-- Grievance resolve form using `/api/admin/grievances/{id}/resolve`.
-- Document audit table using `/api/admin/documents`.
-- Document verify/flag actions using `/api/admin/documents/{id}/verify`.
-- Withdrawal request review using existing admin request endpoints.
-
-Verification:
-
-- Run backend tests.
-- Run `node --check frontend/js/app.js`.
-- Manually verify student login, document upload, grievance creation, and staff resolution.
