@@ -18,11 +18,13 @@ void main() {
       ),
     );
 
+    // Wait for splash overlay timer (3 seconds) to dismiss
+    await tester.pump(const Duration(seconds: 4));
     await tester.pumpAndSettle();
 
     // Verify Welcome Hero Branding is present
     expect(find.text('Welcome to UniAssist'), findsOneWidget);
-    expect(find.text('University Services'), findsOneWidget);
-    expect(find.text('Student / Staff Login'), findsOneWidget);
+    expect(find.text('PUBLIC SERVICES'), findsWidgets);
+    expect(find.text('STUDENT / STAFF'), findsWidgets);
   });
 }

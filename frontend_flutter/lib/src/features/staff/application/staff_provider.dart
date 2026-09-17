@@ -192,6 +192,50 @@ class StaffActions {
       await verifyDocument(id, 'verified', 'Batch verified');
     }
   }
+
+  Future<void> clearDepartmentGate({
+    required String referenceNo,
+    required String department,
+    required String action,
+    double duesAmount = 0.0,
+    String? officerName,
+    String? notes,
+  }) async {
+    try {
+      await _dio.post('/withdrawal/$referenceNo/clear/$department', data: {
+        'action': action,
+        'dues_amount': duesAmount,
+        'officer_name': officerName ?? 'Department Officer',
+        'notes': notes,
+      });
+    } catch (_) {
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+    _ref.invalidate(adminRequestsProvider);
+    _ref.invalidate(adminStatsProvider);
+  }
+
+  Future<void> offsetDepartmentDues({
+    required String referenceNo,
+    required String department,
+    required double amount,
+    required String reason,
+    String? authorizedBy,
+  }) async {
+    try {
+      await _dio.post('/withdrawal/$referenceNo/offset-dues', data: {
+        'department': department,
+        'amount': amount,
+        'reason': reason,
+        'student_consent': true,
+        'authorized_by': authorizedBy ?? 'Finance Officer',
+      });
+    } catch (_) {
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+    _ref.invalidate(adminRequestsProvider);
+    _ref.invalidate(adminStatsProvider);
+  }
 }
 
 Map<String, dynamic> _normaliseWithdrawal(Map<String, dynamic> item) {

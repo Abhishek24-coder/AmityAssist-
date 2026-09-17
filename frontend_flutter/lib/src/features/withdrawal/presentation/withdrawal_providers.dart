@@ -11,3 +11,7 @@ final withdrawalRepositoryProvider = Provider<WithdrawalRepository>(
 final withdrawalGuideProvider = FutureProvider<WithdrawalGuide>((ref) {
   return ref.watch(withdrawalRepositoryProvider).fetchGuide();
 });
+
+final clearanceVoucherProvider = FutureProvider.family<ClearanceVoucher, String>((ref, referenceNo) {
+  return ref.watch(withdrawalRepositoryProvider).fetchClearanceVoucher(referenceNo);
+});

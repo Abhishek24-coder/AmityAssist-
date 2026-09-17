@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/kiosk_theme.dart';
 import '../../../core/widgets/uniassist_logo.dart';
-import '../../chat/presentation/digital_counselor_modal.dart';
 import 'assistant_fab.dart';
 
 class KioskWelcomeScreen extends ConsumerStatefulWidget {
@@ -220,7 +219,7 @@ class _KioskTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final isCompact = screenWidth < 700;
+    final isCompact = screenWidth < 850;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -282,7 +281,7 @@ class _KioskCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
       child: Container(
         height: 280,
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),

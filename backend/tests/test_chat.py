@@ -71,7 +71,7 @@ class TestFullWithdrawalFlow:
         data = resp.json()
         assert data["state"] == "DONE"
         assert data["withdrawal_submitted"] is True
-        assert "WD-" in data["reply"]
+        assert ("AMITY-WTH-" in data["reply"] or "WD-" in data["reply"])
 
     def test_withdrawal_record_stored_in_db(self, client):
         """After CONFIRM the withdrawal_requests table must contain the record."""

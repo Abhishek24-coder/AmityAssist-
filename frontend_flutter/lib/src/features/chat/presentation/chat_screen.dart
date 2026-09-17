@@ -1,181 +1,218 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/api_client.dart';
 import '../../../core/theme/kiosk_theme.dart';
 import '../../../core/widgets/uniassist_logo.dart';
-import '../../auth/application/auth_provider.dart';
 
 class ChatMessage {
   const ChatMessage({
     required this.text,
     required this.isUser,
-    this.intent,
-    this.sentiment,
-    this.quickReplies = const [],
   });
 
   final String text;
   final bool isUser;
-  final String? intent;
-  final String? sentiment;
-  final List<String> quickReplies;
 }
 
 class ChatState {
   const ChatState({
     this.messages = const [],
-    this.sessionId,
-    this.isSending = false,
-    this.error,
+    this.currentOptions = const [],
   });
 
   final List<ChatMessage> messages;
-  final String? sessionId;
-  final bool isSending;
-  final String? error;
+  final List<String> currentOptions;
 
   ChatState copyWith({
     List<ChatMessage>? messages,
-    String? sessionId,
-    bool? isSending,
-    String? error,
+    List<String>? currentOptions,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
-      sessionId: sessionId ?? this.sessionId,
-      isSending: isSending ?? this.isSending,
-      error: error,
+      currentOptions: currentOptions ?? this.currentOptions,
     );
   }
 }
 
-class ChatNotifier extends StateNotifier<ChatState> {
-  ChatNotifier(this._dio, this._studentId)
-      : super(
-          const ChatState(
-            messages: [
-              ChatMessage(
-                text:
-                    'Welcome to the UniAssist advisor. I can guide you through withdrawal, documents, grievances, scholarships, academics, notices, fee status, and hostel support.',
-                isUser: false,
-                quickReplies: [
-                  'Withdrawal checklist',
-                  'Check CGPA',
-                  'File grievance',
-                  'Scholarship eligibility',
-                  'Document verification',
-                ],
-              ),
-            ],
-          ),
-        );
+class AdvisorNotifier extends StateNotifier<ChatState> {
+  AdvisorNotifier() : super(const ChatState()) {
+    _initWelcome();
+  }
 
-  final Dio _dio;
-  final String? _studentId;
+  void _initWelcome() {
+    state = ChatState(
+      messages: const [
+        ChatMessage(
+          text: 'Welcome to the UniAssist Advisor.\nI can guide you through university procedures step-by-step.\n\nWhat do you need help with today?',
+          isUser: false,
+        ),
+      ],
+      currentOptions: const [
+        'Withdrawal',
+        'Certificates',
+        'Grievances',
+        'Scholarships',
+        'Hostel',
+      ],
+    );
+  }
 
-  Future<String> _ensureSession() async {
-    if (state.sessionId != null) return state.sessionId!;
-    final response = await _dio.post('/auth/verify', data: {
-      'student_id': _studentId ?? 'STU001',
+  void handleInput(String option) {
+    // Add user message
+    final newMessages = List<ChatMessage>.from(state.messages)..add(ChatMessage(text: option, isUser: true));
+    
+    state = state.copyWith(messages: newMessages, currentOptions: []);
+    
+    // Simulate slight delay for natural feel
+    Future.delayed(const Duration(milliseconds: 300), () {
+      _processResponse(option);
     });
-    final sessionId = response.data['session_id']?.toString();
-    if (sessionId == null || sessionId.isEmpty) {
-      throw StateError('Unable to start advisor session.');
-    }
-    state = state.copyWith(sessionId: sessionId);
-    return sessionId;
   }
 
-  Future<void> sendMessage(String text) async {
-    final trimmed = text.trim();
-    if (trimmed.isEmpty || state.isSending) return;
+  void _processResponse(String option) {
+    final newMessages = List<ChatMessage>.from(state.messages);
+    List<String> nextOptions = [];
+    String replyText = '';
 
-    state = state.copyWith(
-      isSending: true,
-      error: null,
-      messages: [...state.messages, ChatMessage(text: trimmed, isUser: true)],
-    );
+    // Core State Machine Logic
+    switch (option) {
+      // ── Main Menu ──────────────────────────────────────
+      case 'Withdrawal':
+        replyText = "I can help you complete the withdrawal process.\nLet's begin.\n\nStep 1: Please select your withdrawal reason.";
+        nextOptions = ['Academic', 'Financial', 'Medical', 'Personal', 'Other'];
+        break;
+      
+      // ── Withdrawal Workflow ────────────────────────────
+      case 'Academic':
+      case 'Financial':
+      case 'Medical':
+      case 'Personal':
+      case 'Other':
+        // Assuming they came from Withdrawal step 1
+        if (state.messages.any((m) => m.text.contains('withdrawal reason'))) {
+          replyText = "Got it. Your reason is noted.\n\nStep 2: You must fill out the Official Withdrawal Form.\nWould you like to download it now or print it at the kiosk?";
+          nextOptions = ['Download Form', 'Print at Kiosk', 'I already have it'];
+        } else {
+          _fallback(newMessages);
+          return;
+        }
+        break;
 
-    try {
-      final sessionId = await _ensureSession();
-      final response = await _dio.post('/chat/message', data: {
-        'session_id': sessionId,
-        'message': trimmed,
-      });
+      case 'Download Form':
+      case 'Print at Kiosk':
+      case 'I already have it':
+        replyText = "Excellent.\n\nStep 3: Required Documents.\nYou will need:\n- Completed Withdrawal Form\n- Student ID Card\n- Cancelled Cheque (for refunds)\n- No Dues Certificate\n\nStep 4: Do you have all these documents ready?";
+        nextOptions = ['Yes, all ready', 'What is a cancelled cheque?', 'How to get No Dues?'];
+        break;
+      
+      case 'What is a cancelled cheque?':
+        replyText = "A cancelled cheque is a cheque with two diagonal lines and the word CANCELLED written across it.\n\nPurpose: Used to verify your bank account details for refund processing.\n\nCommon mistakes:\n- Wrong account holder\n- Unclear image\n- Missing account information\n\nDo you have your documents ready now?";
+        nextOptions = ['Yes, all ready', 'How to get No Dues?'];
+        break;
+      
+      case 'How to get No Dues?':
+        replyText = "You must clear your dues from the Library, Hostel, and Accounts departments. The 'No Dues Certificate' form must be signed by the respective department heads.\n\nDo you have your documents ready now?";
+        nextOptions = ['Yes, all ready'];
+        break;
 
-      final data = Map<String, dynamic>.from(response.data as Map);
-      final reply = _cleanText(data['reply']?.toString() ?? 'I could not prepare a response. Please try again.');
-      final quickReplies = _quickRepliesFor(data['intent']?.toString(), data['state']?.toString());
+      case 'Yes, all ready':
+        replyText = "Great. Let's review the checklist:\nWithdrawal Form ✓\nStudent ID ✓\nCancelled Cheque ✓\nNo Dues Certificate ✓\n\nStep 5: Please submit these physical documents in a clear folder to the Registrar's Office (Block A, Room 102).\n\nStep 6: Departments involved in processing are Registrar, Dean of Academics, and Finance.\n\nAre you ready for the timeline information?";
+        nextOptions = ['Yes, show timeline'];
+        break;
+      
+      case 'Yes, show timeline':
+        replyText = "Step 7 & 8: Timelines & Refunds.\n\nAccording to university guidelines, academic processing takes 3–5 working days, and finance processing generally takes 7–10 working days.\n\nImportant: I cannot predict the exact date, this is the official timeline.\n\nStep 9: Workflow complete! You will receive email updates as your file moves between departments.\nIs there anything else you need?";
+        nextOptions = ['Start Over', 'Exit'];
+        break;
 
-      state = state.copyWith(
-        isSending: false,
-        messages: [
-          ...state.messages,
-          ChatMessage(
-            text: reply,
-            isUser: false,
-            intent: data['intent']?.toString(),
-            sentiment: data['sentiment']?.toString(),
-            quickReplies: quickReplies,
-          ),
-        ],
-      );
-    } on DioException catch (error) {
-      state = state.copyWith(
-        isSending: false,
-        error: 'Advisor service is unavailable. Please check the backend connection.',
-        messages: [
-          ...state.messages,
-          ChatMessage(text: 'Advisor service is unavailable. ${error.message ?? ''}'.trim(), isUser: false),
-        ],
-      );
-    } catch (error) {
-      state = state.copyWith(
-        isSending: false,
-        error: 'Unable to send the message.',
-        messages: [...state.messages, const ChatMessage(text: 'Unable to send the message. Please try again.', isUser: false)],
-      );
-    }
-  }
+      // ── Other Main Options (Stubs) ─────────────────────
+      case 'Certificates':
+        replyText = "I can help with Certificates.\nWhat kind of certificate do you need?";
+        nextOptions = ['Bonafide', 'Migration', 'Provisional Degree', 'Start Over'];
+        break;
+      
+      case 'Bonafide':
+      case 'Migration':
+      case 'Provisional Degree':
+        replyText = "For this certificate, you will need:\n- ID Proof\n- Fee Clearance\n\nSubmission: Online Portal or Kiosk Form Drop.\nTimeline: 3-5 working days.\n\nWould you like to proceed?";
+        nextOptions = ['Yes, proceed', 'Start Over'];
+        break;
+      
+      case 'Yes, proceed':
+        replyText = "Great. Please download the respective form from the Guest Services section, fill it, and submit it at Counter 3.\nCan I help with anything else?";
+        nextOptions = ['Start Over'];
+        break;
 
-  static String _cleanText(String value) {
-    return value
-        .replaceAll(RegExp(r'[\u{1F300}-\u{1FAFF}]', unicode: true), '')
-        .replaceAll(RegExp(r'[^\x09\x0A\x0D\x20-\x7E\u0900-\u097F]'), '')
-        .replaceAll(RegExp(r'\*\*|`'), '')
-        .replaceAll(RegExp(r'\n{3,}'), '\n\n')
-        .trim();
-  }
+      case 'Grievances':
+        replyText = "I can help you file a grievance.\nPlease categorize your issue:";
+        nextOptions = ['Academic Issue', 'Fee Issue', 'Hostel Issue', 'Exam Issue'];
+        break;
 
-  static List<String> _quickRepliesFor(String? intent, String? state) {
-    if (state == 'CONFIRM') return ['CONFIRM', 'CANCEL'];
-    switch (intent) {
-      case 'scholarships':
-        return ['Apply scholarship', 'Show eligibility'];
-      case 'exams':
-        return ['Register backpaper', 'Show exam results'];
-      case 'grievances':
-        return ['Academic', 'Fee', 'Hostel', 'Exam'];
-      case 'withdrawals':
-      case 'financial':
-      case 'academic':
-      case 'personal':
-      case 'health':
-      case 'career':
-        return ['Show checklist', 'Refund guidance', 'Request status'];
+      case 'Academic Issue':
+      case 'Fee Issue':
+      case 'Hostel Issue':
+      case 'Exam Issue':
+        replyText = "Thank you. To resolve this, you need to submit a formal grievance ticket. The standard response time is 3 working days.\n\nYou can track the status in your Dashboard.\nWould you like to initiate the ticket now?";
+        nextOptions = ['Yes, create ticket', 'Start Over'];
+        break;
+      
+      case 'Yes, create ticket':
+        replyText = "Ticket created successfully! (Simulated). Your reference number is GRV-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}.\nAnything else?";
+        nextOptions = ['Start Over'];
+        break;
+      
+      case 'Scholarships':
+        replyText = "Scholarship Assistance:\nTo apply, you need a minimum CGPA of 8.0, previous semester marksheets, and an income certificate.\n\nDeadline: October 15th.\nWould you like to check your eligibility?";
+        nextOptions = ['Check Eligibility', 'Start Over'];
+        break;
+
+      case 'Check Eligibility':
+        replyText = "You meet the CGPA requirement! You can submit your application via the Scholarship portal on your dashboard.\nAnything else?";
+        nextOptions = ['Start Over'];
+        break;
+      
+      case 'Hostel':
+        replyText = "Hostel Services.\nWhat do you need help with?";
+        nextOptions = ['Hostel Entry', 'Hostel Exit', 'Maintenance', 'Start Over'];
+        break;
+      
+      case 'Hostel Entry':
+      case 'Hostel Exit':
+      case 'Maintenance':
+        replyText = "Process Guidance: Please ensure you have your room allotment letter and ID. Fill the requisition form available in the Forms section and submit to the Warden.\n\nTimeline: 24-48 hours for processing.\nAnything else?";
+        nextOptions = ['Start Over'];
+        break;
+
+      case 'Start Over':
+        _initWelcome();
+        return;
+      
+      case 'Exit':
+        replyText = "Thank you for using the UniAssist Advisor. Have a great day!";
+        nextOptions = ['Start Over'];
+        break;
+
       default:
-        return ['Withdrawal checklist', 'Document upload', 'Notices', 'Fee status'];
+        _fallback(newMessages);
+        return;
     }
+
+    newMessages.add(ChatMessage(text: replyText, isUser: false));
+    state = state.copyWith(messages: newMessages, currentOptions: nextOptions);
+  }
+
+  void _fallback(List<ChatMessage> newMessages) {
+    newMessages.add(const ChatMessage(
+      text: 'I could not find official information for this request or the workflow got interrupted.\n\nLet\'s start over.',
+      isUser: false,
+    ));
+    state = state.copyWith(messages: newMessages, currentOptions: ['Start Over']);
   }
 }
 
-final chatProvider = StateNotifierProvider.autoDispose<ChatNotifier, ChatState>((ref) {
-  final dio = ref.watch(apiClientProvider);
-  final studentId = ref.watch(authProvider).studentId;
-  return ChatNotifier(dio, studentId);
+final advisorProvider = StateNotifierProvider.autoDispose<AdvisorNotifier, ChatState>((ref) {
+  return AdvisorNotifier();
 });
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -186,24 +223,18 @@ class ChatScreen extends ConsumerStatefulWidget {
 }
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
-  final _controller = TextEditingController();
   final _scrollController = ScrollController();
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    _scrollController.dispose();
-    super.dispose();
+  void _send(String option) {
+    ref.read(advisorProvider.notifier).handleInput(option);
+    _scrollToBottom();
   }
 
-  Future<void> _send([String? value]) async {
-    final text = value ?? _controller.text;
-    _controller.clear();
-    await ref.read(chatProvider.notifier).sendMessage(text);
+  void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
       _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
+        _scrollController.position.maxScrollExtent + 200, // overshoot slightly for new content
         duration: const Duration(milliseconds: 240),
         curve: Curves.easeOut,
       );
@@ -211,8 +242,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final chat = ref.watch(chatProvider);
+    final state = ref.watch(advisorProvider);
+    
+    // Auto-scroll when new messages arrive if we're near the bottom
+    ref.listen<ChatState>(advisorProvider, (previous, next) {
+      if (previous?.messages.length != next.messages.length) {
+        _scrollToBottom();
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -222,35 +266,55 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       body: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 14, 22, 22),
+          padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
           child: Column(
             children: [
-              _AdvisorHeader(error: chat.error),
+              const _AdvisorHeader(),
               const SizedBox(height: 14),
               Expanded(
                 child: Card(
+                  margin: EdgeInsets.zero,
                   child: ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.all(18),
-                    itemCount: chat.messages.length + (chat.isSending ? 1 : 0),
+                    itemCount: state.messages.length,
                     itemBuilder: (context, index) {
-                      if (index >= chat.messages.length) {
-                        return const _TypingRow();
-                      }
-                      final message = chat.messages[index];
-                      return _ChatBubble(
-                        message: message,
-                        onQuickReply: _send,
-                      ).animate().fadeIn(duration: 180.ms).slideY(begin: 0.03);
+                      final message = state.messages[index];
+                      return _ChatBubble(message: message)
+                          .animate()
+                          .fadeIn(duration: 200.ms)
+                          .slideY(begin: 0.05);
                     },
                   ),
                 ),
               ),
-              const SizedBox(height: 14),
-              _Composer(
-                controller: _controller,
-                enabled: !chat.isSending,
-                onSend: () => _send(),
+              // The fixed bottom options tray
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: state.currentOptions.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(12.0),
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    : Wrap(
+                        alignment: WrapAlignment.center,
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: state.currentOptions
+                            .map(
+                              (option) => ActionChip(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                                label: Text(option),
+                                avatar: const Icon(Icons.touch_app_rounded, size: 18),
+                                onPressed: () => _send(option),
+                              ).animate().fadeIn(duration: 150.ms).scale(begin: const Offset(0.95, 0.95)),
+                            )
+                            .toList(),
+                      ),
               ),
             ],
           ),
@@ -261,9 +325,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 }
 
 class _AdvisorHeader extends StatelessWidget {
-  const _AdvisorHeader({this.error});
-
-  final String? error;
+  const _AdvisorHeader();
 
   @override
   Widget build(BuildContext context) {
@@ -291,11 +353,11 @@ class _AdvisorHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('UniAssist Advisor', style: Theme.of(context).textTheme.titleLarge),
+                Text('Digital Counselor', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 3),
                 Text(
-                  error ?? 'Ask a service question. The advisor keeps answers inside university workflows.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: error == null ? AppColors.muted : AppColors.danger),
+                  'Guided procedures and official university workflows.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
                 ),
               ],
             ),
@@ -307,10 +369,9 @@ class _AdvisorHeader extends StatelessWidget {
 }
 
 class _ChatBubble extends StatelessWidget {
-  const _ChatBubble({required this.message, required this.onQuickReply});
+  const _ChatBubble({required this.message});
 
   final ChatMessage message;
-  final ValueChanged<String> onQuickReply;
 
   @override
   Widget build(BuildContext context) {
@@ -341,120 +402,8 @@ class _ChatBubble extends StatelessWidget {
               ),
             ),
           ),
-          if (!isUser && (message.intent != null || message.sentiment != null)) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: [
-                if (message.intent != null) _MetaPill(label: message.intent!),
-                if (message.sentiment != null) _MetaPill(label: message.sentiment!),
-              ],
-            ),
-          ],
-          if (!isUser && message.quickReplies.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: message.quickReplies
-                  .map(
-                    (reply) => ActionChip(
-                      label: Text(reply),
-                      avatar: const Icon(Icons.arrow_forward_rounded, size: 16),
-                      onPressed: () => onQuickReply(reply),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ],
         ],
       ),
-    );
-  }
-}
-
-class _Composer extends StatelessWidget {
-  const _Composer({required this.controller, required this.enabled, required this.onSend});
-
-  final TextEditingController controller;
-  final bool enabled;
-  final VoidCallback onSend;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: controller,
-                enabled: enabled,
-                minLines: 1,
-                maxLines: 4,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => onSend(),
-                decoration: const InputDecoration(
-                  hintText: 'Ask about withdrawal, documents, grievances, scholarships, or exams',
-                  prefixIcon: Icon(Icons.search_rounded),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            SizedBox(
-              width: 58,
-              height: 58,
-              child: FilledButton(
-                onPressed: enabled ? onSend : null,
-                child: const Icon(Icons.send_rounded),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TypingRow extends StatelessWidget {
-  const _TypingRow();
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 14),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-        decoration: BoxDecoration(
-          color: AppColors.primarySoft,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.line),
-        ),
-        child: const Text('Preparing answer...', style: TextStyle(color: AppColors.muted, fontWeight: FontWeight.w700)),
-      ),
-    );
-  }
-}
-
-class _MetaPill extends StatelessWidget {
-  const _MetaPill({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: AppColors.tealSoft,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(label, style: const TextStyle(color: AppColors.teal, fontSize: 12, fontWeight: FontWeight.w800)),
     );
   }
 }

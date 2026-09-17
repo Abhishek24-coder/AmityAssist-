@@ -21,6 +21,8 @@ async def get_status(student_id: str):
             "current_step": request.get("current_step"),
             "checklist": workflow["checklist"],
             "events": workflow["events"],
+            "gates": workflow.get("gates", []),
+            "voucher": workflow.get("voucher"),
             "guide": workflow["guide"],
         }
     except Exception as e:

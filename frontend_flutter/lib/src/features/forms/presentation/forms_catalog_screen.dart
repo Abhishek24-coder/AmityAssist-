@@ -4,8 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/kiosk_theme.dart';
 import '../../../core/utils/download_service.dart';
+import '../../auth/application/auth_provider.dart';
 import '../application/forms_provider.dart';
-import '../domain/form_model.dart';
 
 class FormsCatalogScreen extends ConsumerStatefulWidget {
   const FormsCatalogScreen({super.key});
@@ -64,7 +64,14 @@ class _FormsCatalogScreenState extends ConsumerState<FormsCatalogScreen> {
         title: const Text('Forms & Document Repository'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.canPop() ? context.pop() : context.go('/dashboard'),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              final isLoggedIn = ref.read(authProvider).isAuthenticated;
+              context.go(isLoggedIn ? '/dashboard' : '/services');
+            }
+          },
         ),
       ),
       body: Column(
