@@ -211,3 +211,71 @@ class DocumentVerification(BaseModel):
     @classmethod
     def strip_notes(cls, v: Optional[str]) -> Optional[str]:
         return v.strip() if isinstance(v, str) else v
+
+
+# ---------------------------------------------------------------------------
+# Multi-Department Clearance & Voucher Schemas (Phase 21)
+# ---------------------------------------------------------------------------
+
+
+class ClearanceGateItem(BaseModel):
+    department: Literal["LIBRARY", "HOSTEL", "ACCOUNTS", "REGISTRAR"]
+    sequence_order: int
+    status: Literal["PENDING", "CLEARED", "DUES_FLAGGED"] = "PENDING"
+    officer_name: Optional[str] = None
+    officer_id: Optional[str] = None
+    cleared_at: Optional[str] = None
+    notes: Optional[str] = None
+    dues_amount: float = 0.0
+
+
+class DepartmentClearActionRequest(BaseModel):
+    action: Literal["CLEAR", "FLAG_DUES"]
+    officer_name: str = Field(..., min_length=2, max_length=100)
+    officer_id: str = Field(..., min_length=2, max_length=50)
+    notes: Optional[str] = Field(None, max_length=1000)
+    dues_amount: Optional[float] = 0.0
+
+
+class ClearanceVoucherResponse(BaseModel):
+    reference_no: str
+    student_id: str
+    student_name: str
+    course: str
+    semester: int
+    submission_date: str
+    current_status: str
+    ordinance_clause: str
+    gross_fee_paid: float
+    refund_percentage: float
+    deductions: float
+    net_refundable_amount: float
+    caution_deposit_balance: float
+    gates: list[ClearanceGateItem] = []
+
+
+class OffsetDepositRequest(BaseModel):
+    department: Literal["LIBRARY", "HOSTEL", "ACCOUNTS", "REGISTRAR"]
+    amount: float = Field(..., gt=0, description="Dues amount to offset against caution deposit")
+    reason: str = Field(..., min_length=3, max_length=255, description="Reason for fine, e.g. 'Lost ID Card replacement fee'")
+    student_consent: bool = Field(True, description="Explicit acknowledgment to deduct from refundable deposit")
+    authorized_by: Optional[str] = Field("Finance Officer", max_length=100)
+
+
+class DepositLedgerTransaction(BaseModel):
+    id: int
+    department: str
+    amount: float
+    reason: str
+    authorized_by: str
+    created_at: str
+
+
+class DepositLedgerResponse(BaseModel):
+    reference_no: str
+    student_id: str
+    original_deposit: float
+    total_offset: float
+    remaining_balance: float
+    transactions: list[DepositLedgerTransaction] = []
+

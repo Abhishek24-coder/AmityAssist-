@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/utils/download_service.dart';
 import 'withdrawal_providers.dart';
 
 class WithdrawalHomeScreen extends ConsumerWidget {
@@ -31,6 +32,38 @@ class WithdrawalHomeScreen extends ConsumerWidget {
                 title: data.title,
                 subtitle: data.summary,
                 child: Text(data.principle),
+              ),
+              const SizedBox(height: 12),
+              _SectionCard(
+                title: 'Digital Clearance Pipeline',
+                subtitle: 'Parallel 4-department clearance. Zero physical running between offices.',
+                child: Column(
+                  children: [
+                    _ClearanceGateTile(
+                      title: 'Gate 1: Central Library',
+                      subtitle: 'Book returns, outstanding book dues check',
+                      icon: Icons.local_library_rounded,
+                    ),
+                    const Divider(height: 12),
+                    _ClearanceGateTile(
+                      title: 'Gate 2: Hostel & Mess Administration',
+                      subtitle: 'Room vacation verification, mess dues',
+                      icon: Icons.hotel_rounded,
+                    ),
+                    const Divider(height: 12),
+                    _ClearanceGateTile(
+                      title: 'Gate 3: Finance & Accounts Office',
+                      subtitle: 'UGC refund percentage calculation, smart fee offsetting',
+                      icon: Icons.account_balance_wallet_rounded,
+                    ),
+                    const Divider(height: 12),
+                    _ClearanceGateTile(
+                      title: 'Gate 4: Registrar Final Audit',
+                      subtitle: 'Digital sign-off, TC/Migration issuance authorization',
+                      icon: Icons.verified_user_rounded,
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 12),
               _SectionCard(
@@ -82,7 +115,16 @@ class WithdrawalHomeScreen extends ConsumerWidget {
                           leading: const Icon(Icons.description_outlined),
                           title: Text(form.name),
                           subtitle: Text('${form.issuingDepartment}\n${form.description}'),
-                          trailing: const Icon(Icons.download_outlined),
+                          trailing: IconButton(
+                            tooltip: 'Download ${form.name}',
+                            icon: const Icon(Icons.download_rounded),
+                            onPressed: () {
+                              DownloadService.downloadFile(
+                                form.fullDownloadUrl,
+                                fileName: form.name,
+                              );
+                            },
+                          ),
                           isThreeLine: true,
                         ),
                       )
@@ -111,10 +153,39 @@ class WithdrawalHomeScreen extends ConsumerWidget {
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.go('/withdrawal/flow'),
+        onPressed: () => context.push('/withdrawal/flow'),
         icon: const Icon(Icons.add),
         label: const Text('Initiate Withdrawal'),
       ),
+    );
+  }
+}
+
+class _ClearanceGateTile extends StatelessWidget {
+  const _ClearanceGateTile({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, color: Theme.of(context).colorScheme.primary, size: 22),
+      ),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Text(subtitle),
     );
   }
 }

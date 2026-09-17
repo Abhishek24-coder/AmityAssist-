@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/theme/kiosk_theme.dart';
+import '../../../core/utils/download_service.dart';
 import '../../auth/application/auth_provider.dart';
 
 /// Fetch all active workflows for the student.
@@ -21,7 +22,7 @@ final workflowsProvider =
         .map((e) => Map<String, dynamic>.from(e as Map))
         .toList();
   } catch (e) {
-    // Fallback: try the old status endpoint
+    // Fallback: try the status endpoint
     try {
       final response = await dio.get('/status/$studentId');
       final data = response.data as Map<String, dynamic>;
@@ -103,6 +104,10 @@ class _WorkflowCard extends StatelessWidget {
     final reason = workflow['reason'] ?? '';
     final checklist = workflow['checklist'] as List? ?? [];
     final statusFlow = workflow['status_flow'] as List? ?? [];
+    final gates = workflow['gates'] as List? ?? [];
+    final voucher = workflow['voucher'] is Map
+        ? Map<String, dynamic>.from(workflow['voucher'] as Map)
+        : null;
 
     final typeColor = switch (type) {
       'WITHDRAWAL' => AppColors.urgentRed,
@@ -161,7 +166,7 @@ class _WorkflowCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    status.toUpperCase().replaceAll('_', ' '),
+                    status.toString().toUpperCase().replaceAll('_', ' '),
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -172,7 +177,7 @@ class _WorkflowCard extends StatelessWidget {
               ],
             ),
 
-            if (department.isNotEmpty) ...[
+            if (department.toString().isNotEmpty) ...[
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -186,7 +191,7 @@ class _WorkflowCard extends StatelessWidget {
               ),
             ],
 
-            if (reason.isNotEmpty) ...[
+            if (reason.toString().isNotEmpty) ...[
               const SizedBox(height: 6),
               Text(
                 'Reason: $reason',
@@ -197,7 +202,42 @@ class _WorkflowCard extends StatelessWidget {
             // Status flow timeline
             if (statusFlow.isNotEmpty) ...[
               const Divider(height: 24),
-              _WorkflowTimeline(statusFlow: statusFlow, currentStatus: status),
+              _WorkflowTimeline(statusFlow: statusFlow, currentStatus: status.toString()),
+            ],
+
+            // Digital Clearance Gates (Phase 21)
+            if (gates.isNotEmpty) ...[
+              const Divider(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Department Clearance Gates',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.amityBlue.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Text(
+                      '4-Stage Audit',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.amityBlue),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _ClearanceGatesWidget(gates: gates),
+            ],
+
+            // Clearance Voucher Details
+            if (voucher != null) ...[
+              const Divider(height: 24),
+              _ClearanceVoucherCard(voucher: voucher),
             ],
 
             // Checklist
@@ -236,6 +276,218 @@ class _WorkflowCard extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ClearanceGatesWidget extends StatelessWidget {
+  const _ClearanceGatesWidget({required this.gates});
+  final List gates;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: gates.map((g) {
+        final gate = g is Map ? Map<String, dynamic>.from(g) : <String, dynamic>{};
+        final dept = gate['department']?.toString().toUpperCase() ?? '';
+        final status = gate['status']?.toString().toUpperCase() ?? 'PENDING';
+        final dues = (gate['dues_amount'] as num?)?.toDouble() ?? 0.0;
+        final officer = gate['officer_name']?.toString() ?? '';
+        final notes = gate['notes']?.toString() ?? '';
+
+        final isCleared = status == 'CLEARED';
+        final isFlagged = status == 'FLAG_DUES';
+
+        final icon = isCleared
+            ? Icons.check_circle_rounded
+            : (isFlagged ? Icons.warning_amber_rounded : Icons.pending_outlined);
+
+        final color = isCleared
+            ? AppColors.successGreen
+            : (isFlagged ? AppColors.amityYellow : Colors.grey);
+
+        final deptLabel = switch (dept) {
+          'LIBRARY' => 'Central Library',
+          'HOSTEL' => 'Hostel & Mess Office',
+          'ACCOUNTS' => 'Finance & Accounts',
+          'REGISTRAR' => 'Registrar Audit',
+          _ => dept,
+        };
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, color: color, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      deptLabel,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                    ),
+                    if (officer.isNotEmpty)
+                      Text('Signed by: $officer', style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
+                    if (notes.isNotEmpty)
+                      Text('Note: $notes', style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
+                  ],
+                ),
+              ),
+              if (dues > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.urgentRed.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '₹${dues.toStringAsFixed(0)} Dues',
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.urgentRed),
+                  ),
+                )
+              else
+                Text(
+                  status,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _ClearanceVoucherCard extends StatelessWidget {
+  const _ClearanceVoucherCard({required this.voucher});
+  final Map<String, dynamic> voucher;
+
+  @override
+  Widget build(BuildContext context) {
+    final refNo = voucher['reference_no'] ?? '';
+    final refund = (voucher['net_refundable_amount'] as num?)?.toDouble() ?? 0.0;
+    final caution = (voucher['caution_deposit_balance'] as num?)?.toDouble() ?? 10000.0;
+    final clause = voucher['ordinance_clause'] ?? '';
+    final offsetDeduction = (10000.0 - caution).clamp(0.0, 10000.0);
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.amityBlue.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.receipt_long_rounded, color: AppColors.amityBlue, size: 20),
+              const SizedBox(width: 8),
+              const Text(
+                'Digital Clearance Voucher',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.amityBlue),
+              ),
+              const Spacer(),
+              if (refNo.toString().isNotEmpty)
+                Text(
+                  refNo.toString(),
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Estimated Net Refund:', style: TextStyle(fontSize: 13, color: Colors.grey)),
+              Text(
+                '₹${refund.toStringAsFixed(2)}',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.successGreen),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Refundable Caution Deposit:', style: TextStyle(fontSize: 13, color: Colors.grey)),
+              Text(
+                '₹${caution.toStringAsFixed(2)}',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink),
+              ),
+            ],
+          ),
+          if (offsetDeduction > 0) ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.amityYellow.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.auto_fix_high_rounded, size: 14, color: AppColors.amityYellow),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Smart Offset: ₹${offsetDeduction.toStringAsFixed(0)} deducted from deposit. Zero offline payment required.',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.brown),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (clause.toString().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Ordinance: $clause',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+            ),
+          ],
+          if (refNo.toString().isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  DownloadService.downloadFile(
+                    'http://127.0.0.1:8000/api/withdrawal/$refNo/slip',
+                    fileName: 'TOKEN-$refNo.pdf',
+                  );
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Downloading Official QR Token Slip for $refNo...'),
+                      backgroundColor: AppColors.amityBlue,
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.qr_code_2_rounded, size: 18),
+                label: const Text('Download / Print QR Token Slip'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.amityBlue,
+                  side: const BorderSide(color: AppColors.amityBlue),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
