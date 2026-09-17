@@ -8,6 +8,9 @@ import '../../auth/application/auth_provider.dart';
 import '../application/staff_provider.dart';
 import 'staff_notesheet_screen.dart';
 import 'staff_registry_screen.dart';
+import 'staff_document_ocr_screen.dart';
+import 'staff_accreditation_screen.dart';
+import 'staff_institution_screen.dart';
 
 
 class StaffDashboardScreen extends ConsumerWidget {
@@ -126,10 +129,7 @@ class StaffDashboardScreen extends ConsumerWidget {
                               subtitle: 'Hierarchical Chain & In-Flight Edits',
                               icon: Icons.description_rounded,
                               color: AppColors.amityBlue,
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (_) => const StaffNotesheetScreen()),
-                              ),
+                              onTap: () => context.push('/staff/notesheets'),
                             ).animate().fadeIn(delay: 350.ms).scale(),
                           ),
                           const SizedBox(width: 24),
@@ -141,11 +141,50 @@ class StaffDashboardScreen extends ConsumerWidget {
                               subtitle: 'Real-Time Entry Locks & Roster',
                               icon: Icons.shield_rounded,
                               color: Colors.deepOrange,
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (_) => const StaffRegistryScreen()),
-                              ),
+                              onTap: () => context.push('/staff/registry'),
                             ).animate().fadeIn(delay: 400.ms).scale(),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Phase 25, 27, 28 Action Cards
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildActionCard(
+                              context: context,
+                              title: 'OCR Document Cockpit',
+                              value: 'Live',
+                              subtitle: 'Identity Cross-Check & Extraction',
+                              icon: Icons.document_scanner_rounded,
+                              color: const Color(0xFF1565C0),
+                              onTap: () => context.push('/staff/ocr'),
+                            ).animate().fadeIn(delay: 450.ms).scale(),
+                          ),
+                          const SizedBox(width: 24),
+                          Expanded(
+                            child: _buildActionCard(
+                              context: context,
+                              title: 'Accreditation Hub',
+                              value: 'NAAC',
+                              subtitle: 'CO/PO Attainment & Reports',
+                              icon: Icons.assessment_rounded,
+                              color: const Color(0xFF6A1B9A),
+                              onTap: () => context.push('/staff/accreditation'),
+                            ).animate().fadeIn(delay: 500.ms).scale(),
+                          ),
+                          const SizedBox(width: 24),
+                          Expanded(
+                            child: _buildActionCard(
+                              context: context,
+                              title: 'Institution Settings',
+                              value: 'Config',
+                              subtitle: 'White-Label & Clearance Chain',
+                              icon: Icons.settings_applications_rounded,
+                              color: const Color(0xFF00695C),
+                              onTap: () => context.push('/staff/institution'),
+                            ).animate().fadeIn(delay: 550.ms).scale(),
                           ),
                         ],
                       ),

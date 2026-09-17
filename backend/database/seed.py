@@ -170,6 +170,7 @@ CREATE TABLE IF NOT EXISTS documents (
     ocr_data        TEXT,
     verification_status TEXT DEFAULT 'pending' CHECK(verification_status IN ('pending', 'verified', 'fraud_detected', 'error')),
     verification_notes  TEXT,
+    ocr_identity_match TEXT DEFAULT 'NOT_CHECKED' CHECK(ocr_identity_match IN ('MATCH', 'MISMATCH', 'NOT_FOUND', 'NOT_CHECKED')),
     timestamp       DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(student_id) REFERENCES students(id)
 );
@@ -374,6 +375,46 @@ CREATE TABLE IF NOT EXISTS student_status_history (
     updated_by      TEXT NOT NULL,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(student_id) REFERENCES students(id)
+);
+
+CREATE TABLE IF NOT EXISTS co_po_mappings (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_code     TEXT NOT NULL,
+    course_name     TEXT NOT NULL,
+    branch          TEXT NOT NULL,
+    semester        INTEGER NOT NULL,
+    co_code         TEXT NOT NULL,
+    co_description  TEXT NOT NULL,
+    po1  REAL DEFAULT 0, po2  REAL DEFAULT 0, po3  REAL DEFAULT 0,
+    po4  REAL DEFAULT 0, po5  REAL DEFAULT 0, po6  REAL DEFAULT 0,
+    po7  REAL DEFAULT 0, po8  REAL DEFAULT 0, po9  REAL DEFAULT 0,
+    po10 REAL DEFAULT 0, po11 REAL DEFAULT 0, po12 REAL DEFAULT 0,
+    target_attainment REAL NOT NULL DEFAULT 50.0,
+    UNIQUE(course_code, co_code)
+);
+
+CREATE TABLE IF NOT EXISTS institution_config (
+    key             TEXT PRIMARY KEY,
+    value           TEXT NOT NULL,
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS institution_clearance_chain (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    desk_code       TEXT NOT NULL UNIQUE,
+    desk_name       TEXT NOT NULL,
+    sequence_order  INTEGER NOT NULL,
+    is_active       INTEGER NOT NULL DEFAULT 1,
+    description     TEXT
+);
+
+CREATE TABLE IF NOT EXISTS institution_refund_slabs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    slab_label      TEXT NOT NULL UNIQUE,
+    min_days        INTEGER NOT NULL,
+    max_days        INTEGER NOT NULL,
+    refund_percent  REAL NOT NULL,
+    policy_note     TEXT
 );
 """
 
@@ -758,6 +799,61 @@ _SAMPLE_RETENTION_POLICIES = [
     ("notification_logs", 180, "Delivery event logs kept for 6 months."),
 ]
 
+_SAMPLE_CO_PO_MAPPINGS = [
+    # CSE-301 Computer Networks
+    ("CSE-301", "Computer Networks", "CSE", 6, "CO1", "Analyze network architectures and protocols", 3, 2, 3, 1, 0, 0, 0, 1, 0, 0, 2, 0, 50.0),
+    ("CSE-301", "Computer Networks", "CSE", 6, "CO2", "Design reliable data link and transport layer solutions", 3, 3, 3, 2, 1, 0, 0, 0, 0, 0, 1, 0, 50.0),
+    ("CSE-301", "Computer Networks", "CSE", 6, "CO3", "Evaluate network security mechanisms", 2, 2, 3, 1, 0, 0, 1, 0, 0, 0, 2, 1, 50.0),
+    ("CSE-301", "Computer Networks", "CSE", 6, "CO4", "Implement socket programming applications", 3, 3, 2, 2, 3, 0, 0, 1, 0, 0, 1, 0, 50.0),
+    # CSE-302 Software Engineering
+    ("CSE-302", "Software Engineering", "CSE", 6, "CO1", "Apply software development lifecycle models", 3, 2, 2, 1, 2, 0, 0, 0, 1, 0, 2, 1, 50.0),
+    ("CSE-302", "Software Engineering", "CSE", 6, "CO2", "Design UML diagrams for system modeling", 2, 3, 3, 2, 1, 0, 0, 0, 0, 0, 2, 0, 50.0),
+    ("CSE-302", "Software Engineering", "CSE", 6, "CO3", "Implement testing strategies and quality assurance", 3, 2, 3, 1, 2, 0, 1, 0, 0, 0, 1, 0, 50.0),
+    ("CSE-302", "Software Engineering", "CSE", 6, "CO4", "Manage software projects using agile methodology", 1, 2, 1, 1, 2, 0, 0, 1, 2, 3, 2, 1, 50.0),
+    # CSE-303 Artificial Intelligence
+    ("CSE-303", "Artificial Intelligence", "CSE", 6, "CO1", "Formulate problems as state-space search", 3, 3, 3, 2, 1, 0, 0, 1, 0, 0, 1, 0, 50.0),
+    ("CSE-303", "Artificial Intelligence", "CSE", 6, "CO2", "Apply machine learning classification algorithms", 3, 3, 3, 2, 2, 0, 0, 1, 0, 0, 2, 0, 50.0),
+    ("CSE-303", "Artificial Intelligence", "CSE", 6, "CO3", "Evaluate knowledge representation techniques", 2, 2, 3, 1, 0, 0, 1, 0, 0, 0, 1, 1, 50.0),
+    ("CSE-303", "Artificial Intelligence", "CSE", 6, "CO4", "Design intelligent agent architectures", 3, 3, 3, 2, 2, 1, 0, 1, 0, 0, 2, 0, 50.0),
+    # ECE-201 Signals and Systems
+    ("ECE-201", "Signals and Systems", "ECE", 4, "CO1", "Classify continuous and discrete signals", 3, 2, 2, 1, 0, 0, 0, 0, 0, 0, 1, 0, 50.0),
+    ("ECE-201", "Signals and Systems", "ECE", 4, "CO2", "Apply Fourier and Laplace transforms", 3, 3, 3, 2, 1, 0, 0, 0, 0, 0, 1, 0, 50.0),
+    ("ECE-201", "Signals and Systems", "ECE", 4, "CO3", "Analyze LTI system responses", 3, 2, 3, 1, 1, 0, 0, 0, 0, 0, 2, 0, 50.0),
+    ("ECE-201", "Signals and Systems", "ECE", 4, "CO4", "Design basic digital filters", 2, 3, 3, 2, 2, 0, 0, 1, 0, 0, 1, 0, 50.0),
+    # ECE-202 Digital Circuit Design
+    ("ECE-202", "Digital Circuit Design", "ECE", 4, "CO1", "Simplify Boolean expressions using Karnaugh maps", 3, 2, 2, 1, 0, 0, 0, 0, 0, 0, 1, 0, 50.0),
+    ("ECE-202", "Digital Circuit Design", "ECE", 4, "CO2", "Design combinational and sequential circuits", 3, 3, 3, 2, 2, 0, 0, 1, 0, 0, 1, 0, 50.0),
+    ("ECE-202", "Digital Circuit Design", "ECE", 4, "CO3", "Implement circuits using HDL", 2, 3, 3, 2, 3, 0, 0, 1, 0, 0, 1, 0, 50.0),
+    ("ECE-202", "Digital Circuit Design", "ECE", 4, "CO4", "Verify digital designs through simulation", 2, 2, 3, 1, 2, 0, 1, 0, 0, 0, 2, 0, 50.0),
+]
+
+_DEFAULT_INSTITUTION_CONFIG = [
+    ("institution_name", "Amity University"),
+    ("institution_motto", "In Pursuit of Excellence"),
+    ("crest_logo_url", "/static/branding/amity_crest.png"),
+    ("primary_color", "#003366"),
+    ("secondary_color", "#FFB800"),
+    ("contact_email", "admin@amity.edu"),
+    ("contact_phone", "+91-120-4392000"),
+    ("website_url", "https://www.amity.edu"),
+    ("address", "Sector-125, Noida, Uttar Pradesh, India - 201313"),
+]
+
+_DEFAULT_CLEARANCE_CHAIN = [
+    ("LIBRARY", "Library Clearance Desk", 1, 1, "Verify all borrowed books returned and no outstanding fines."),
+    ("HOSTEL", "Hostel Clearance Desk", 2, 1, "Verify room handover, furniture inventory, and hostel dues."),
+    ("ACCOUNTS", "Accounts & Finance Desk", 3, 1, "Verify fee payment records and pending financial obligations."),
+    ("REGISTRAR", "Registrar Office", 4, 1, "Final academic records verification and certificate issuance."),
+]
+
+_DEFAULT_REFUND_SLABS = [
+    ("Within 15 days of admission", 0, 15, 100.0, "Full refund as per UGC norms and Ordinance 11.3."),
+    ("16 to 30 days after admission", 16, 30, 80.0, "80% refund — 20% deducted as administrative charges."),
+    ("31 to 60 days after admission", 31, 60, 50.0, "50% refund per university policy and UGC circular."),
+    ("61 to 90 days after admission", 61, 90, 25.0, "25% refund — significant deduction after 2 months."),
+    ("After 90 days", 91, 9999, 0.0, "No refund applicable after 90 days per Ordinance 11.3(d)."),
+]
+
 def init_db() -> None:
     """Create tables and insert rich sample lifecycle data — safe to call multiple times."""
     conn = get_connection()
@@ -822,6 +918,12 @@ def init_db() -> None:
         cursor.execute("ALTER TABLE students ADD COLUMN status_updated_at DATETIME")
     if "status_updated_by" not in student_columns:
         cursor.execute("ALTER TABLE students ADD COLUMN status_updated_by TEXT")
+
+    # Phase 25: ocr_identity_match column migration
+    doc_columns = [row["name"] for row in cursor.execute("PRAGMA table_info(documents)").fetchall()]
+    if "ocr_identity_match" not in doc_columns:
+        cursor.execute("ALTER TABLE documents ADD COLUMN ocr_identity_match TEXT DEFAULT 'NOT_CHECKED'")
+
     workflow_columns = [row["name"] for row in cursor.execute("PRAGMA table_info(workflows)").fetchall()]
     if "campus_code" not in workflow_columns:
         cursor.execute("ALTER TABLE workflows ADD COLUMN campus_code TEXT NOT NULL DEFAULT 'NOIDA'")
@@ -959,6 +1061,27 @@ def init_db() -> None:
             VALUES ('HIST-SEED-001', 'STU005', 'ACTIVE', 'SUSPENDED', 'Proctorial Board Inquiry: Chemical Lab Equipment Misuse (Ref: PB-2026-088)', 'PROCTOR_OFFICE')
             """
         )
+    conn.commit()
+
+    # Phase 27: Seed CO/PO accreditation mappings
+    cursor.executemany(
+        "INSERT OR IGNORE INTO co_po_mappings (course_code, course_name, branch, semester, co_code, co_description, po1, po2, po3, po4, po5, po6, po7, po8, po9, po10, po11, po12, target_attainment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        _SAMPLE_CO_PO_MAPPINGS,
+    )
+
+    # Phase 28: Seed institution configuration
+    cursor.executemany(
+        "INSERT OR IGNORE INTO institution_config (key, value) VALUES (?, ?)",
+        _DEFAULT_INSTITUTION_CONFIG,
+    )
+    cursor.executemany(
+        "INSERT OR IGNORE INTO institution_clearance_chain (desk_code, desk_name, sequence_order, is_active, description) VALUES (?, ?, ?, ?, ?)",
+        _DEFAULT_CLEARANCE_CHAIN,
+    )
+    cursor.executemany(
+        "INSERT OR IGNORE INTO institution_refund_slabs (slab_label, min_days, max_days, refund_percent, policy_note) VALUES (?, ?, ?, ?, ?)",
+        _DEFAULT_REFUND_SLABS,
+    )
     conn.commit()
 
     # Phase 29: Initialize and seed FTS5 policy search index

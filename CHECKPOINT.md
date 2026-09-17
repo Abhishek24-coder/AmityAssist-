@@ -6,8 +6,8 @@ This document provides the authoritative, phase-by-phase execution status of **U
 
 ## 📊 High-Level Status Summary
 
-* **Phases 0–24, 26, 29 (Baseline & Core Institutional Expansion):** ✅ **COMPLETED (Verified with 143+ automated tests)**
-* **Phases 25, 27, 28 (Remaining Institutional Modules):** ⏳ **PENDING (Planned for Execution)**
+* **Phases 0–29 (Complete 30-Phase Baseline & Institutional Expansion):** ✅ **COMPLETED (Verified with 176 automated tests)**
+* **Pending Roadmap Phases:** None! All 30 phases (Phases 0 through 29) are fully implemented, tested, and operational.
 
 ---
 
@@ -163,12 +163,13 @@ These phases address the concrete real-world operational problems discovered on 
 * `[x]` Frontend: Faculty attendance portal shows instant RED alert banners for suspended students.
 * `[x]` Frontend: Kiosk terminals and exam barcode scanners display visual entry locks for suspended or debarred students.
 
-### [ ] Phase 25: Real Local Document OCR Verification (Python Tesseract)
+### [x] Phase 25: Real Local Document OCR Verification (Python Tesseract)
 *Goal: Replace simulated mock OCR with real image text extraction to catch mismatched or fraudulent uploads.*
-* `[ ]` Backend: Integrate `pytesseract` in `backend/routes/documents.py`.
-* `[ ]` Backend: Extract Student Name, Enrollment Number, and Date from uploaded ID cards and bank deposit slips.
-* `[ ]` Backend: Compare extracted Enrollment Number against the logged-in student profile (`extracted_id == student_id`).
-* `[ ]` Frontend: Staff Document Cockpit displays uploaded image side-by-side with extracted OCR fields and green/amber match indicators.
+* `[x]` Backend: Integrate `pytesseract` and `Pillow` in `backend/services/ocr_service.py` with automatic graceful fallback when Tesseract binary is not present.
+* `[x]` Backend: Extract Student Name, Enrollment Number, and Date from uploaded ID cards and bank deposit slips using targeted regex patterns.
+* `[x]` Backend: Compare extracted Enrollment Number against logged-in student profile (`MATCH` / `MISMATCH` / `NOT_FOUND`) with confidence score.
+* `[x]` Backend: Upgrade `POST /api/documents/upload` and `documents` schema with `ocr_identity_match` field.
+* `[x]` Frontend: Staff Document Cockpit (`staff_document_ocr_screen.dart`) displays uploaded file metadata side-by-side with extracted OCR fields and green/amber/red match indicators.
 
 ### [x] Phase 26: Printable QR Token Slip & Mobile Tracking Handshake
 *Goal: Provide tangible proof when students leave the lobby kiosk and allow smartphone tracking from anywhere (e.g., Canada).*
@@ -177,17 +178,19 @@ These phases address the concrete real-world operational problems discovered on 
 * `[x]` Frontend: Add "Download / Print Official Token Slip" button on the kiosk screen upon request submission.
 * `[x]` Frontend: Build a responsive, public mobile status tracking page (`/status?ref=...`) accessible via smartphone camera scan.
 
-### [ ] Phase 27: Academic Accreditation & CO/PO Reporting Engine
+### [x] Phase 27: Academic Accreditation & CO/PO Reporting Engine
 *Goal: Eliminate the faculty burden of manually compiling Course Outcome and Program Outcome attainment spreadsheets for NAAC/NBA.*
-* `[ ]` Backend: Build `backend/services/accreditation_service.py` mapping course grades to Program Outcomes (PO1 to PO12) and Course Outcomes (CO1 to CO4).
-* `[ ]` Backend: Endpoints to export pre-formatted Excel / PDF reports for NAAC Criterion 2.6.
-* `[ ]` Frontend: Build the **Accreditation Hub** tab in the Staff Portal with 1-click export buttons for annual cohorts.
+* `[x]` Backend: Build `backend/services/accreditation_service.py` mapping course grades to Program Outcomes (PO1 to PO12) and Course Outcomes (CO1 to CO4) using UGC letter-to-numeric scales.
+* `[x]` Backend: Endpoints in `backend/routes/accreditation.py` (`/api/accreditation/co-attainment`, `/api/accreditation/po-attainment`, `/api/accreditation/cohort-summary`, `/api/accreditation/export`).
+* `[x]` Backend: 1-click export of pre-formatted CSV and PDF reports matching NAAC Criterion 2.6 requirements.
+* `[x]` Frontend: Build the **Accreditation Hub** (`staff_accreditation_screen.dart`) in the Staff Portal with color-coded attainment matrix, branch/semester filters, and 1-click export buttons.
 
-### [ ] Phase 28: Multi-University White-Label Institutional Configurator
+### [x] Phase 28: Multi-University White-Label Institutional Configurator
 *Goal: Ensure the platform can be deployed by any university (Amity, Galgotias, Sharda, DU) without code modifications.*
-* `[ ]` Backend: Create `backend/routes/institution.py` allowing super-admins to configure university name, crest logo, theme colors, and custom refund day slabs.
-* `[ ]` Backend: Dynamic clearance chain builder (add, rename, or remove clearance desks per campus policy).
-* `[ ]` Frontend: Admin Settings screen to upload university branding and adjust clearance steps dynamically.
+* `[x]` Backend: Create `backend/routes/institution.py` and `backend/services/institution_service.py` allowing super-admins to configure university name, crest logo, theme colors, and contact info.
+* `[x]` Backend: Dynamic clearance chain builder (`/api/institution/clearance-chain`) allowing desks to be added, reordered, or removed dynamically.
+* `[x]` Backend: Custom refund policy slab editor (`/api/institution/refund-slabs`) supporting flexible day cutoff brackets and percentage refund slabs.
+* `[x]` Frontend: Admin Settings screen (`staff_institution_screen.dart`) with branding inspector, interactive clearance chain stepper, and refund slab table editor.
 
 ### [x] Phase 29: Intelligent Search & Policy Guidance (SQLite FTS5 / Hybrid RAG & Voice)
 *Goal: Answer student inquiries with 100% legal accuracy, zero hallucinations, and voice push-to-talk guidance.*

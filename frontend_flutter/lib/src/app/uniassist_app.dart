@@ -23,6 +23,11 @@ import '../features/staff/presentation/staff_dashboard_screen.dart';
 import '../features/staff/presentation/staff_document_screen.dart';
 import '../features/staff/presentation/staff_grievance_screen.dart';
 import '../features/staff/presentation/staff_withdrawal_screen.dart';
+import '../features/staff/presentation/staff_notesheet_screen.dart';
+import '../features/staff/presentation/staff_registry_screen.dart';
+import '../features/staff/presentation/staff_document_ocr_screen.dart';
+import '../features/staff/presentation/staff_accreditation_screen.dart';
+import '../features/staff/presentation/staff_institution_screen.dart';
 import '../features/withdrawal/presentation/withdrawal_flow_screen.dart';
 import '../features/withdrawal/presentation/withdrawal_home_screen.dart';
 
@@ -53,6 +58,11 @@ class UniAssistApp extends ConsumerWidget {
         GoRoute(path: '/staff/withdrawals', builder: (context, state) => const StaffWithdrawalScreen()),
         GoRoute(path: '/staff/grievances', builder: (context, state) => const StaffGrievanceScreen()),
         GoRoute(path: '/staff/documents', builder: (context, state) => const StaffDocumentScreen()),
+        GoRoute(path: '/staff/notesheets', builder: (context, state) => const StaffNotesheetScreen()),
+        GoRoute(path: '/staff/registry', builder: (context, state) => const StaffRegistryScreen()),
+        GoRoute(path: '/staff/ocr', builder: (context, state) => const StaffDocumentOcrScreen()),
+        GoRoute(path: '/staff/accreditation', builder: (context, state) => const StaffAccreditationScreen()),
+        GoRoute(path: '/staff/institution', builder: (context, state) => const StaffInstitutionScreen()),
       ],
     );
 

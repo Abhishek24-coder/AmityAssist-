@@ -225,14 +225,14 @@ This document tracks **every single functional feature** across the UniAssist pl
 ---
 
 ### Feature 18: Staff Document Cockpit with Local Tesseract OCR
-* **Status:** `[PENDING / NOT COMPLETED ⏳]`
+* **Status:** `[COMPLETED ✅]`
 * **Phase:** Phase 25
 * **Target Users:** Document verification officers, accounts verification staff.
 * **Working Mechanism:**
   * Python Tesseract OCR automatically extracts Name, Enrollment ID, Date, and Amount from uploaded receipts and ID cards.
-  * Automated comparison: `extracted_id == student_id`.
-  * Staff view displays the uploaded document side-by-side with extracted OCR fields and green/amber match badges, cutting review time from 3 minutes to 5 seconds.
-* **Code Reference:** `backend/routes/documents.py`, `frontend_flutter/lib/src/features/staff/presentation/staff_document_screen.dart`.
+  * Automated comparison: `extracted_id == student_id` with `MATCH` / `MISMATCH` / `NOT_FOUND` status.
+  * Staff view displays uploaded document metadata side-by-side with extracted OCR fields and green/amber match badges, cutting review time from 3 minutes to 5 seconds.
+* **Code Reference:** `backend/services/ocr_service.py`, `backend/routes/documents.py`, `frontend_flutter/lib/src/features/staff/presentation/staff_document_ocr_screen.dart`.
 
 ---
 
@@ -248,27 +248,27 @@ This document tracks **every single functional feature** across the UniAssist pl
 ---
 
 ### Feature 20: Academic Accreditation (CO/PO) Attainment Matrix 1-Click Export
-* **Status:** `[PENDING / NOT COMPLETED ⏳]`
+* **Status:** `[COMPLETED ✅]`
 * **Phase:** Phase 27
 * **Target Users:** Faculty coordinators, NAAC/NBA Accreditation Steering Committees.
 * **Working Mechanism:**
   * Automatically aggregates assessment marks and backpaper records, mapping them against Course Outcomes (CO1–CO4) and Program Outcomes (PO1–PO12).
-  * 1-click export of pre-formatted Excel / PDF reports matching NAAC Criterion 2.6 templates.
+  * 1-click export of pre-formatted CSV and PDF reports matching NAAC Criterion 2.6 templates.
   * Relieves faculty from late-night manual spreadsheet compilation.
-* **Code Reference:** `backend/routes/admin.py`, `backend/services/accreditation_service.py`.
+* **Code Reference:** `backend/routes/accreditation.py`, `backend/services/accreditation_service.py`, `frontend_flutter/lib/src/features/staff/presentation/staff_accreditation_screen.dart`.
 
 ---
 
 ### Feature 21: Institutional White-Label Configurator (Multi-University Setup)
-* **Status:** `[PENDING / NOT COMPLETED ⏳]`
+* **Status:** `[COMPLETED ✅]`
 * **Phase:** Phase 28
 * **Target Users:** University IT Directors, System Super-Admins.
 * **Working Mechanism:**
   * Universal administrative panel allowing any institution (Amity, Galgotias, Sharda, DU) to configure:
-    * University Name, Crest/Logo, Theme Colors.
+    * University Name, Crest/Logo, Theme Colors, Contact Email/Phone.
     * Dynamic clearance chain (add, remove, or reorder clearance desks).
     * Custom refund day cutoff brackets and percentage slabs.
-* **Code Reference:** `backend/routes/institution.py`.
+* **Code Reference:** `backend/routes/institution.py`, `backend/services/institution_service.py`, `frontend_flutter/lib/src/features/staff/presentation/staff_institution_screen.dart`.
 
 ---
 

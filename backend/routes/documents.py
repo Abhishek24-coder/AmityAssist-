@@ -1,8 +1,10 @@
 """
-Document management with simulated Document AI OCR and fraud detection.
+Document management with real OCR verification (Phase 25) and fraud detection.
 
-Mock services:
-  - OCR: Simulates text extraction from documents
+Phase 25 upgrade:
+  - Real pytesseract OCR when Tesseract binary is available
+  - Graceful mock fallback when Tesseract is not installed
+  - Identity cross-check: extracted enrollment ID vs logged-in student
   - Fraud Detection: Checks for tampered signatures, mismatched names, altered text
   - Verification: Staff can manually verify or flag documents
 """
@@ -19,6 +21,7 @@ import random
 from pathlib import Path
 from ..database.connection import get_connection
 from ..config import settings
+from ..services.ocr_service import OcrService
 
 router = APIRouter(prefix="/api/documents", tags=["Documents"])
 limiter = Limiter(key_func=get_remote_address)
@@ -28,76 +31,8 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
 
-# ── Mock Document AI Service ──────────────────────────────────────────────────
-def _detect_document_type(filename: str) -> str:
-    lower_name = filename.lower()
-    if "id" in lower_name or "card" in lower_name:
-        return "ID Card"
-    if "marksheet" in lower_name or "marks" in lower_name or "grade" in lower_name:
-        return "Marksheet"
-    if "medical" in lower_name or "certificate" in lower_name:
-        return "Medical Certificate"
-    return "Other Document"
 
-
-def simulate_ocr_analysis(filename: str, student_id: str, file_bytes: bytes = b"", duplicate_hash: str | None = None) -> dict:
-    """
-    Simulate Document AI OCR extraction.
-    Returns mock OCR data and fraud detection flags.
-    """
-    document_type = _detect_document_type(filename)
-    file_hash = hashlib.sha256(file_bytes).hexdigest()
-    file_size = len(file_bytes)
-    suffix = Path(filename).suffix.lower()
-
-    ocr_data = {
-        "extracted_name": "Aisha Malik",
-        "extracted_student_id": student_id,
-        "extracted_date": "2024-05-15",
-        "confidence_score": round(random.uniform(0.85, 0.99), 2),
-        "document_type": document_type,
-        "image_quality_score": round(random.uniform(0.75, 0.98), 2),
-        "signature_detected": True,
-        "stamp_detected": True,
-        "metadata": {
-            "file_name": filename,
-            "file_size_bytes": file_size,
-            "extension": suffix,
-            "sha256": file_hash,
-            "mime_type": {
-                ".pdf": "application/pdf",
-                ".jpg": "image/jpeg",
-                ".jpeg": "image/jpeg",
-                ".png": "image/png",
-            }.get(suffix, "application/octet-stream"),
-        },
-    }
-
-    fraud_flags = []
-
-    if duplicate_hash and file_hash == duplicate_hash:
-        fraud_flags.append("Duplicate document detected")
-
-    if random.random() < 0.05:
-        fraud_flags.append("Signature mismatch detected")
-
-    if random.random() < 0.03:
-        fraud_flags.append("Text alteration suspected")
-
-    if random.random() < 0.02:
-        fraud_flags.append("Potential duplicate submission")
-
-    if ocr_data["image_quality_score"] < 0.60:
-        fraud_flags.append("Image quality too low for verification")
-
-    return {
-        "ocr_data": ocr_data,
-        "fraud_flags": fraud_flags,
-        "overall_status": "FRAUD_DETECTED" if fraud_flags else "CLEAN",
-    }
-
-
-# ── Upload Document with OCR Analysis ──────────────────────────────────────────
+# ── Upload Document with Real OCR Analysis (Phase 25) ─────────────────────────
 @router.post("/upload")
 @limiter.limit(settings.rate_limit_upload)
 async def upload_document(
@@ -106,7 +41,8 @@ async def upload_document(
     student_id: str = Form(...)
 ):
     """
-    Upload document and run mock Document AI OCR + fraud detection.
+    Upload document and run real OCR text extraction + identity cross-check.
+    Uses pytesseract when available, otherwise falls back to mock analysis.
     """
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
@@ -128,24 +64,41 @@ async def upload_document(
         buffer.write(contents)
 
     conn = get_connection()
+
+    # Duplicate detection via SHA-256 hash comparison
     rows = conn.execute(
         "SELECT ocr_data FROM documents WHERE student_id = ? ORDER BY timestamp DESC",
         (student_id.upper().strip(),),
     ).fetchall()
 
-    duplicate_hash = None
+    file_hash = hashlib.sha256(contents).hexdigest()
+    is_duplicate = False
     for row in rows:
         if row["ocr_data"]:
             try:
                 data = json.loads(row["ocr_data"])
                 metadata = data.get("metadata", {})
-                duplicate_hash = metadata.get("sha256")
-                if duplicate_hash and duplicate_hash == hashlib.sha256(contents).hexdigest():
+                prior_hash = metadata.get("sha256")
+                if prior_hash and prior_hash == file_hash:
+                    is_duplicate = True
                     break
             except json.JSONDecodeError:
                 continue
 
-    analysis_result = simulate_ocr_analysis(file.filename, student_id, contents, duplicate_hash)
+    # Phase 25: Real OCR analysis with identity cross-check
+    analysis_result = OcrService.analyze(
+        file_bytes=contents,
+        filename=file.filename,
+        student_id=student_id,
+    )
+
+    # Append duplicate flag if detected
+    if is_duplicate:
+        analysis_result["fraud_flags"].append("Duplicate document detected")
+        analysis_result["overall_status"] = "FRAUD_DETECTED"
+
+    ocr_identity_match = analysis_result.get("ocr_identity_match", "NOT_FOUND")
+    ocr_engine = analysis_result.get("ocr_engine", "mock_fallback")
 
     try:
         verification_status = "fraud_detected" if analysis_result["fraud_flags"] else "pending"
@@ -154,13 +107,15 @@ async def upload_document(
 
         conn.execute(
             """INSERT INTO documents 
-               (student_id, file_name, file_path, classification, ocr_data, verification_status, verification_notes) 
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (student_id, file_name, file_path, classification, ocr_data,
+                verification_status, verification_notes, ocr_identity_match) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (student_id, file.filename, str(file_path),
              analysis_result["ocr_data"]["document_type"],
              ocr_json,
              verification_status,
-             fraud_notes)
+             fraud_notes,
+             ocr_identity_match)
         )
         conn.commit()
     except Exception:
@@ -172,7 +127,9 @@ async def upload_document(
         "ocr_data": analysis_result["ocr_data"],
         "fraud_flags": analysis_result["fraud_flags"],
         "overall_status": analysis_result["overall_status"],
-        "verification_status": verification_status
+        "ocr_identity_match": ocr_identity_match,
+        "ocr_engine": ocr_engine,
+        "verification_status": verification_status,
     }
 
 

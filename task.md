@@ -81,3 +81,47 @@ This task list tracks the active 4-phase execution milestone:
   - `[x]` Comprehensive automated test suite: `backend/tests/test_student_registry.py` (5/5 tests passing).
   - `[x]` Full regression test run: All 143 tests passing with 100% success.
 
+---
+
+### Phase 25: Real Local Document OCR Verification (Python Tesseract) [COMPLETED ✅]
+- `[x]` **Backend OCR Service & Verification Logic:**
+  - `[x]` Build `backend/services/ocr_service.py` with `pytesseract` and `Pillow` image text extraction and graceful fallback.
+  - `[x]` Extract student name, enrollment number, and date using targeted regex heuristics.
+  - `[x]` Implement identity cross-check comparing extracted ID with student profile (`MATCH`, `MISMATCH`, `NOT_FOUND`) and confidence score.
+  - `[x]` Upgrade `backend/routes/documents.py` to run OCR on image uploads and store `ocr_identity_match`.
+  - `[x]` Update database schema in `seed.py` with `ocr_identity_match` column migration.
+- `[x]` **Frontend Staff Cockpit:**
+  - `[x]` Build `frontend_flutter/.../staff_document_ocr_screen.dart` with document metadata inspector, OCR field table, and match indicators.
+  - `[x]` Add "OCR Document Cockpit" quick action card in `staff_dashboard_screen.dart`.
+- `[x]` **Verification & Testing:**
+  - `[x]` Automated test suite in `backend/tests/test_ocr_verification.py`.
+
+---
+
+### Phase 27: Academic Accreditation & CO/PO Reporting Engine [COMPLETED ✅]
+- `[x]` **Backend Attainment Engine & Report Generation:**
+  - `[x]` Implement `backend/services/accreditation_service.py` with letter-grade mapping, CO attainment calculator, and PO correlation matrix.
+  - `[x]` Create `backend/routes/accreditation.py` with endpoints for CO attainment, PO matrix, cohort summary, and CSV/PDF export.
+  - `[x]` Add `co_po_mappings` table and seed data in `backend/database/seed.py`.
+  - `[x]` Register route in `backend/main.py`.
+- `[x]` **Frontend Accreditation Hub:**
+  - `[x]` Build `frontend_flutter/.../staff_accreditation_screen.dart` with branch/semester filters, attainment tables, heatmap grids, and 1-click export.
+  - `[x]` Add "Accreditation Hub" quick action card in `staff_dashboard_screen.dart`.
+- `[x]` **Verification & Testing:**
+  - `[x]` Automated test suite in `backend/tests/test_accreditation.py`.
+
+---
+
+### Phase 28: Multi-University White-Label Institutional Configurator [COMPLETED ✅]
+- `[x]` **Backend Configuration Service & API:**
+  - `[x]` Build `backend/services/institution_service.py` managing institution branding, dynamic clearance desk chains, and refund day slabs.
+  - `[x]` Create `backend/routes/institution.py` with GET/PUT endpoints for config, clearance-chain, and refund-slabs.
+  - `[x]` Add `institution_config`, `institution_clearance_chain`, and `institution_refund_slabs` tables with default seed in `seed.py`.
+  - `[x]` Register route in `backend/main.py`.
+- `[x]` **Frontend Configurator Cockpit:**
+  - `[x]` Build `frontend_flutter/.../staff_institution_screen.dart` with branding editor, interactive clearance chain stepper, and refund slab table.
+  - `[x]` Add "Institution Settings" quick action card in `staff_dashboard_screen.dart`.
+- `[x]` **Verification & Testing:**
+  - `[x]` Automated test suite in `backend/tests/test_institution_config.py`.
+  - `[x]` Full regression test run: All 176 tests passing with 100% success.
+

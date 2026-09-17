@@ -28,7 +28,10 @@ Completed baseline:
 - Phase 22 smart financial offsetting: 1-tap auto-deduction of minor asset fines (lost ID ₹200) from refundable security deposit.
 - Phase 23 collaborative digital notesheet: hierarchical 5-tier approval chain (`Supervisor` ➔ `HOD` ➔ `HOI` ➔ `Pro-VC` ➔ `VC`) with in-flight collaborative editing and audit logs, eliminating paper peon couriers and file rejections.
 - Phase 24 centralized real-time student status registry: real-time operational state machine (`ACTIVE`, `UNDER_CLEARANCE`, `WITHDRAWN`, `SUSPENDED`, `DEBARRED`), live SSE event broadcast, faculty attendance warning banners, and kiosk entry locks.
+- Phase 25 real local document OCR verification: Python Tesseract image text extraction with student ID cross-matching (`MATCH`/`MISMATCH`/`NOT_FOUND`), confidence scoring, and Staff Document OCR Cockpit.
 - Phase 26 printable QR token slip: ReportLab vector PDF slip generation with dynamic 2D QR codes linking to public mobile status tracking.
+- Phase 27 academic accreditation & CO/PO reporting engine: automated Course Outcome (CO1–CO4) and Program Outcome (PO1–PO12) attainment matrix calculation, cohort summaries, and 1-click NAAC Criterion 2.6 CSV/PDF export.
+- Phase 28 multi-university white-label configurator: institution branding settings (name, crest URL, theme colors), dynamic clearance chain desk configuration, and custom refund day slabs.
 - Phase 29 intelligent search & policy guidance: SQLite FTS5 sub-5ms BM25 ordinance search, hybrid RAG guidance, and push-to-talk voice endpoints.
 
 Remaining production work:
@@ -83,7 +86,7 @@ Student ID: STU001
 py -m pytest
 ```
 
-The current verified result is `143 passed` with 0 failures.
+The current verified result is `176 passed` with 0 failures.
 
 ## Main Local Prototype Endpoints
 
@@ -124,6 +127,16 @@ GET  /api/registry/events
 GET  /api/policy/search?q=...
 POST /api/policy/guide
 POST /api/voice/query
+GET  /api/accreditation/co-attainment
+GET  /api/accreditation/po-attainment
+GET  /api/accreditation/cohort-summary
+GET  /api/accreditation/export
+GET  /api/institution/config
+PUT  /api/institution/config
+GET  /api/institution/clearance-chain
+PUT  /api/institution/clearance-chain
+GET  /api/institution/refund-slabs
+PUT  /api/institution/refund-slabs
 GET  /api/reports/analytics
 GET  /api/reports/funnel
 GET  /api/reports/bottlenecks
