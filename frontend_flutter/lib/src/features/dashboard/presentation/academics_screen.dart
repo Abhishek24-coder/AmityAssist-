@@ -132,16 +132,18 @@ class _ExamCardState extends ConsumerState<_ExamCard> {
     try {
       final dio = ref.read(apiClientProvider);
       final studentId = ref.read(authProvider).studentId;
+      final examId = widget.exam['id'] is int
+          ? widget.exam['id'] as int
+          : int.tryParse(widget.exam['id']?.toString() ?? '1') ?? 1;
       await dio.post('/student/backpaper', data: {
         'student_id': studentId,
-        'course_code': widget.exam['course_code'],
-        'course_name': widget.exam['course_name'],
+        'exam_id': examId,
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Backpaper registered for ${widget.exam['course_name']}'),
+            content: Text('Backpaper registered for ${widget.exam['course_name'] ?? 'course'}'),
             backgroundColor: AppColors.successGreen,
           ),
         );

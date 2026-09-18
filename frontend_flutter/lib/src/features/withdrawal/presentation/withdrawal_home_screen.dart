@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/theme/kiosk_theme.dart';
 import '../../../core/utils/download_service.dart';
+import '../../auth/application/auth_provider.dart';
 import 'withdrawal_providers.dart';
 
 class WithdrawalHomeScreen extends ConsumerWidget {
@@ -153,7 +155,44 @@ class WithdrawalHomeScreen extends ConsumerWidget {
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/withdrawal/flow'),
+        onPressed: () {
+          final auth = ref.read(authProvider);
+          if (!auth.isAuthenticated) {
+            showDialog(
+              context: context,
+              builder: (dialogCtx) => AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: Row(
+                  children: [
+                    const Icon(Icons.lock_person_rounded, color: AppColors.primary),
+                    const SizedBox(width: 8),
+                    const Text('Student Sign-In Required', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                content: const Text(
+                  'Official university withdrawal, clearance gate tracking, and fee refund calculations require verified student identity.\n\nPlease sign in with your student credentials to proceed.',
+                  style: TextStyle(height: 1.4),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogCtx),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: () {
+                      Navigator.pop(dialogCtx);
+                      context.push('/login');
+                    },
+                    icon: const Icon(Icons.login_rounded, size: 18),
+                    label: const Text('Sign In as Student'),
+                  ),
+                ],
+              ),
+            );
+            return;
+          }
+          context.push('/withdrawal/flow');
+        },
         icon: const Icon(Icons.add),
         label: const Text('Initiate Withdrawal'),
       ),

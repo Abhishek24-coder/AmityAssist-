@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 
 import '../../../core/theme/kiosk_theme.dart';
 import '../../../core/widgets/uniassist_logo.dart';
@@ -194,12 +196,37 @@ class AdvisorNotifier extends StateNotifier<ChatState> {
         break;
 
       default:
-        _fallback(newMessages);
+        _queryBackendPolicy(option, newMessages);
         return;
     }
 
     newMessages.add(ChatMessage(text: replyText, isUser: false));
     state = state.copyWith(messages: newMessages, currentOptions: nextOptions);
+  }
+
+  Future<void> _queryBackendPolicy(String query, List<ChatMessage> newMessages) async {
+    try {
+      final res = await http.post(
+        Uri.parse('http://127.0.0.1:8000/api/policy/guide'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'query': query}),
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final guidance = data['answer']?.toString() ?? data['guidance']?.toString() ?? 'Here is the relevant university policy guidance.';
+        final refs = (data['citations'] as List?)?.map((r) => r.toString()).join(', ') ?? 
+                     (data['ordinance_references'] as List?)?.map((r) => r.toString()).join(', ') ?? '';
+        final fullReply = refs.isNotEmpty ? '$guidance\n\nOfficial Citation: $refs' : guidance;
+        newMessages.add(ChatMessage(text: fullReply, isUser: false));
+        state = state.copyWith(
+          messages: newMessages,
+          currentOptions: ['Withdrawal', 'Certificates', 'Grievances', 'Start Over'],
+        );
+        return;
+      }
+    } catch (_) {}
+
+    _fallback(newMessages);
   }
 
   void _fallback(List<ChatMessage> newMessages) {

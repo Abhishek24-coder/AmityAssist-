@@ -26,9 +26,10 @@ async def get_all_requests(request: Request = None):
     conn = get_connection()
     try:
         rows = conn.execute(
-            """SELECT w.id, w.student_id, s.name, w.reason, w.status, w.timestamp, d.file_path 
+            """SELECT w.id, w.student_id, COALESCE(s.name, w.student_id) AS name, 
+                      w.reason, w.status, w.timestamp, w.reference_no, d.file_path 
                FROM withdrawal_requests w
-               JOIN students s ON w.student_id = s.id
+               LEFT JOIN students s ON w.student_id = s.id
                LEFT JOIN documents d ON w.student_id = d.student_id
                ORDER BY w.timestamp DESC"""
         ).fetchall()

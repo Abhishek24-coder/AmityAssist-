@@ -34,7 +34,7 @@ class AssistantFab extends StatelessWidget {
                         color: AppColors.teal,
                         onTap: () {
                           Navigator.pop(context);
-                          showDigitalCounselor(context);
+                          showDigitalCounselor(context, initialTab: 1, autoStartVoice: true);
                         },
                       ),
                     ),
@@ -46,7 +46,7 @@ class AssistantFab extends StatelessWidget {
                         color: AppColors.primary,
                         onTap: () {
                           Navigator.pop(context);
-                          showDigitalCounselor(context);
+                          showDigitalCounselor(context, initialTab: 0);
                         },
                       ),
                     ),

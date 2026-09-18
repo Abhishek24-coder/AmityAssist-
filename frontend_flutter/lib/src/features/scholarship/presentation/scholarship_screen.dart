@@ -107,9 +107,12 @@ class _ScholarshipCardState extends ConsumerState<_ScholarshipCard> {
     try {
       final dio = ref.read(apiClientProvider);
       final studentId = ref.read(authProvider).studentId;
+      final scholarshipId = widget.scholarship['id'] is int
+          ? widget.scholarship['id'] as int
+          : int.tryParse(widget.scholarship['id']?.toString() ?? '1') ?? 1;
       await dio.post('/student/scholarships/apply', data: {
         'student_id': studentId,
-        'scheme_id': widget.scholarship['id'],
+        'scholarship_id': scholarshipId,
       });
 
       setState(() {

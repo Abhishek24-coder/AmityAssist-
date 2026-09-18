@@ -1063,6 +1063,50 @@ def init_db() -> None:
         )
     conn.commit()
 
+    # Phase 23: Seed Proctorial Disciplinary Notesheet for Suspended Student STU005
+    from ..services.notesheet_service import NotesheetService
+    NotesheetService.init_tables()
+    notesheet_id = "ns-seed-disc-088"
+    ref_no = "NS-DISC-2026-088"
+    ns_content = json.dumps({
+        "student_name": "Kavita Nair",
+        "enrolment_no": "A2305220005",
+        "program": "B.Tech Biotechnology",
+        "current_semester": "4th Semester",
+        "incident_date": "2026-08-14",
+        "incident_location": "Chemical Engineering & Biotech Lab 2",
+        "ordinance_clause": "Ordinance 18.2 (Disciplinary Actions & Conduct)",
+        "current_status": "SUSPENDED",
+        "findings": "Student was found operating high-speed centrifuge without supervision, causing rotor casing fracture.",
+        "restitution_fee": "₹3,500",
+        "recommendation": "Conditional revocation of suspension upon submission of written safety undertaking and ₹3,500 equipment damage restitution to be offset from caution deposit.",
+        "proctorial_officer": "Dr. R. K. Saxena (Chief Proctor)"
+    })
+    cursor.execute(
+        """
+        INSERT OR REPLACE INTO notesheets (
+            id, reference_no, title, category, student_id, created_by,
+            current_stage, content, status, created_at, updated_at
+        ) VALUES (
+            ?, ?, ?, 'DISCIPLINARY', 'STU005', 'PROCTOR_OFFICE',
+            'HOD', ?, 'IN_REVIEW', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+        )
+        """,
+        (notesheet_id, ref_no, "Disciplinary Committee: Review of Student Suspension & Re-admission (STU005)", ns_content)
+    )
+    cursor.execute(
+        """
+        INSERT OR REPLACE INTO notesheet_signatures (
+            id, notesheet_id, stage, officer_id, officer_name, role, action, comments, signed_at
+        ) VALUES (
+            'sig-seed-001', ?, 'SUPERVISOR', 'STAFF_PROCTOR_01', 'Dr. R. K. Saxena', 'Chief Proctor',
+            'FORWARD', 'Interim suspension enacted under Ordinance 18.2. Forwarded to HOD Biotechnology for departmental concurrence and restitution sign-off.', CURRENT_TIMESTAMP
+        )
+        """,
+        (notesheet_id,)
+    )
+    conn.commit()
+
     # Phase 27: Seed CO/PO accreditation mappings
     cursor.executemany(
         "INSERT OR IGNORE INTO co_po_mappings (course_code, course_name, branch, semester, co_code, co_description, po1, po2, po3, po4, po5, po6, po7, po8, po9, po10, po11, po12, target_attainment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1089,4 +1133,5 @@ def init_db() -> None:
     PolicySearchService.initialize_fts_index()
 
     print("[DB] Expanded Student Lifecycle Database seeded successfully.")
+
 

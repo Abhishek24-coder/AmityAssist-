@@ -9,17 +9,31 @@ import '../../auth/application/auth_provider.dart';
 import 'chat_screen.dart';
 
 /// Shows the AI Digital Counselor in a touch-first modal/dialog on kiosk or mobile.
-Future<void> showDigitalCounselor(BuildContext context) {
+Future<void> showDigitalCounselor(
+  BuildContext context, {
+  int initialTab = 0,
+  bool autoStartVoice = false,
+}) {
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (context) => const DigitalCounselorModal(),
+    builder: (context) => DigitalCounselorModal(
+      initialTab: initialTab,
+      autoStartVoice: autoStartVoice,
+    ),
   );
 }
 
 class DigitalCounselorModal extends ConsumerStatefulWidget {
-  const DigitalCounselorModal({super.key});
+  const DigitalCounselorModal({
+    super.key,
+    this.initialTab = 0,
+    this.autoStartVoice = false,
+  });
+
+  final int initialTab;
+  final bool autoStartVoice;
 
   @override
   ConsumerState<DigitalCounselorModal> createState() => _DigitalCounselorModalState();
@@ -27,11 +41,19 @@ class DigitalCounselorModal extends ConsumerStatefulWidget {
 
 class _DigitalCounselorModalState extends ConsumerState<DigitalCounselorModal> {
   final ScrollController _scrollController = ScrollController();
-  int _activeTab = 0; // 0: Guided Procedures, 1: Policy Search & Voice AI (FTS5)
+  final TextEditingController _chatTextController = TextEditingController();
+  late int _activeTab;
+
+  @override
+  void initState() {
+    super.initState();
+    _activeTab = widget.initialTab;
+  }
 
   @override
   void dispose() {
     _scrollController.dispose();
+    _chatTextController.dispose();
     super.dispose();
   }
 
@@ -260,41 +282,98 @@ class _DigitalCounselorModalState extends ConsumerState<DigitalCounselorModal> {
                           ),
                         ),
 
-                        // Fixed bottom options tray (Wizard Buttons)
+                        // Bottom tray with Quick Action Chips + Interactive Message Input Box
                         Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                           decoration: const BoxDecoration(
                             color: Colors.white,
                             border: Border(top: BorderSide(color: AppColors.line)),
                           ),
-                          child: state.currentOptions.isEmpty
-                              ? const Center(
-                                  child: Padding(
-                                    padding: EdgeInsets.all(12.0),
-                                    child: CircularProgressIndicator(),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (state.currentOptions.isNotEmpty) ...[
+                                SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children: state.currentOptions
+                                        .map(
+                                          (option) => Padding(
+                                            padding: const EdgeInsets.only(right: 8),
+                                            child: ActionChip(
+                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                              labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                              label: Text(option),
+                                              avatar: const Icon(Icons.touch_app_rounded, size: 14),
+                                              onPressed: () => _handleSend(option),
+                                            ),
+                                          ),
+                                        )
+                                        .toList(),
                                   ),
-                                )
-                              : Wrap(
-                                  alignment: WrapAlignment.center,
-                                  spacing: 12,
-                                  runSpacing: 12,
-                                  children: state.currentOptions
-                                      .map(
-                                        (option) => ActionChip(
-                                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                                          labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                                          label: Text(option),
-                                          avatar: const Icon(Icons.touch_app_rounded, size: 16),
-                                          onPressed: () => _handleSend(option),
-                                        ).animate().fadeIn(duration: 150.ms).scale(begin: const Offset(0.95, 0.95)),
-                                      )
-                                      .toList(),
                                 ),
+                                const SizedBox(height: 10),
+                              ],
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _chatTextController,
+                                      decoration: InputDecoration(
+                                        hintText: 'Type your question or query here...',
+                                        hintStyle: const TextStyle(fontSize: 14),
+                                        isDense: true,
+                                        filled: true,
+                                        fillColor: AppColors.panel,
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(24),
+                                          borderSide: const BorderSide(color: AppColors.line),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(24),
+                                          borderSide: const BorderSide(color: AppColors.line),
+                                        ),
+                                      ),
+                                      onSubmitted: (text) {
+                                        if (text.trim().isNotEmpty) {
+                                          _handleSend(text.trim());
+                                          _chatTextController.clear();
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    tooltip: 'Switch to Voice AI',
+                                    icon: const Icon(Icons.mic_rounded, color: AppColors.teal),
+                                    onPressed: () => setState(() => _activeTab = 1),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  IconButton.filled(
+                                    tooltip: 'Send message',
+                                    onPressed: () {
+                                      final text = _chatTextController.text.trim();
+                                      if (text.isNotEmpty) {
+                                        _handleSend(text);
+                                        _chatTextController.clear();
+                                      }
+                                    },
+                                    icon: const Icon(Icons.send_rounded, size: 18),
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: AppColors.primary,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     )
-                  : const _PolicyVoiceTab(),
+                  : _PolicyVoiceTab(autoStartVoice: widget.autoStartVoice),
             ),
           ],
         ),
@@ -330,7 +409,8 @@ class _OnlinePill extends StatelessWidget {
 }
 
 class _PolicyVoiceTab extends ConsumerStatefulWidget {
-  const _PolicyVoiceTab();
+  const _PolicyVoiceTab({this.autoStartVoice = false});
+  final bool autoStartVoice;
 
   @override
   ConsumerState<_PolicyVoiceTab> createState() => _PolicyVoiceTabState();
@@ -343,6 +423,16 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
   bool _isSpeaking = false;
   Map<String, dynamic>? _guidance;
   String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autoStartVoice) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _toggleVoice();
+      });
+    }
+  }
 
   @override
   void dispose() {
