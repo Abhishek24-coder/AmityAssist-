@@ -48,11 +48,39 @@ class TtsService {
           utterance.rate = rate || 1.0;
           utterance.pitch = pitch || 1.0;
           
-          // Select natural English voice if available
-          var voices = window.speechSynthesis.getVoices();
-          var preferred = voices.find(function(v) { 
-            return (v.lang.includes('en-IN') || v.lang.includes('en-US') || v.lang.includes('en-GB')) && !v.name.includes('Google') === false;
-          }) || voices.find(function(v) { return v.lang.startsWith('en'); });
+          var voices = window.speechSynthesis.getVoices() || [];
+          var targetLang = (lang || 'en-IN').toLowerCase();
+          var preferred = null;
+
+          if (targetLang.startsWith('hi')) {
+            preferred = voices.find(function(v) {
+              var vl = (v.lang || '').toLowerCase();
+              var vn = (v.name || '').toLowerCase();
+              return vl === 'hi-in' || vl.startsWith('hi') ||
+                     vn.includes('hindi') || vn.includes('हिन्दी') ||
+                     vn.includes('swara') || vn.includes('madhur') ||
+                     vn.includes('kalpana') || vn.includes('hemant');
+            });
+          }
+
+          if (!preferred && (targetLang === 'en-in' || targetLang === 'hi-latn')) {
+            preferred = voices.find(function(v) {
+              var vl = (v.lang || '').toLowerCase();
+              var vn = (v.name || '').toLowerCase();
+              return vl === 'en-in' || vl === 'en_in' ||
+                     vn.includes('india') || vn.includes('neerja') ||
+                     vn.includes('prabhat') || vn.includes('ravi');
+            });
+          }
+
+          if (!preferred) {
+            preferred = voices.find(function(v) {
+              return (v.lang || '').toLowerCase().startsWith(targetLang.split('-')[0]);
+            }) || voices.find(function(v) {
+              return (v.lang || '').toLowerCase().startsWith('en');
+            });
+          }
+
           if (preferred) utterance.voice = preferred;
 
           utterance.onend = function() {
