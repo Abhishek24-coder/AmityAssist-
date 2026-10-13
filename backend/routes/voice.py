@@ -21,6 +21,7 @@ class VoiceQueryRequest(BaseModel):
     student_id: Optional[str] = Field(None, description="Optional student ID for personalization")
     language: str = Field("en-IN", description="BCP 47 language tag e.g. en-IN, hi-IN")
     page_context: Optional[dict[str, Any]] = Field(None, description="Active client screen context")
+    conversation_history: Optional[list[dict[str, Any]]] = Field(None, description="Recent conversation turns")
 
 
 @router.post("/query")
@@ -30,16 +31,24 @@ async def process_voice_query(body: VoiceQueryRequest) -> dict[str, Any]:
         query=body.spoken_text,
         student_id=body.student_id,
         page_context=body.page_context,
+        language=body.language,
+        history=body.conversation_history,
     )
 
     clean_speech = guidance.get("voice_speech_text") or guidance.get("answer", "")
     # Strip complex marks/citations for natural text-to-speech cadence
-    clean_speech = clean_speech.replace("₹", "Rupees ").replace("INR ", "Rupees ").replace("ORD-", "Ordinance ")
+    if body.language == "hi-IN":
+        clean_speech = clean_speech.replace("₹", "रुपये ").replace("INR ", "रुपये ").replace("ORD-", "अध्यादेश ")
+    elif body.language == "hi-Latn":
+        clean_speech = clean_speech.replace("₹", "rupaye ").replace("INR ", "rupaye ").replace("ORD-", "Ordinance ")
+    else:
+        clean_speech = clean_speech.replace("₹", "Rupees ").replace("INR ", "Rupees ").replace("ORD-", "Ordinance ")
 
     return {
         "transcription": body.spoken_text,
         "response_text": guidance["answer"],
         "speech_text": clean_speech,
+        "engine": guidance.get("engine", "Gemini Hybrid AI"),
         "speech_params": {
             "lang": body.language,
             "rate": 0.95,  # Measured cadence for kiosks
