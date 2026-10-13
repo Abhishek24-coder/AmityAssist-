@@ -19,14 +19,22 @@ Future<void> showDigitalCounselor(
   BuildContext context, {
   int initialTab = 0,
   bool autoStartVoice = false,
+  String? currentRoute,
 }) {
+  final screenWidth = MediaQuery.of(context).size.width;
+  final isMobile = screenWidth < 700;
+
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
+    constraints: BoxConstraints(
+      maxWidth: isMobile ? double.infinity : 780,
+    ),
     builder: (context) => DigitalCounselorModal(
       initialTab: initialTab,
       autoStartVoice: autoStartVoice,
+      currentRoute: currentRoute,
     ),
   );
 }
@@ -36,10 +44,12 @@ class DigitalCounselorModal extends ConsumerStatefulWidget {
     super.key,
     this.initialTab = 0,
     this.autoStartVoice = false,
+    this.currentRoute,
   });
 
   final int initialTab;
   final bool autoStartVoice;
+  final String? currentRoute;
 
   @override
   ConsumerState<DigitalCounselorModal> createState() => _DigitalCounselorModalState();
@@ -54,6 +64,13 @@ class _DigitalCounselorModalState extends ConsumerState<DigitalCounselorModal> {
   void initState() {
     super.initState();
     _activeTab = widget.initialTab;
+    if (widget.currentRoute != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ref.read(pageContextProvider.notifier).setRoute(widget.currentRoute!);
+        }
+      });
+    }
   }
 
   @override
@@ -82,7 +99,8 @@ class _DigitalCounselorModalState extends ConsumerState<DigitalCounselorModal> {
     final state = ref.watch(advisorProvider);
     final mediaQuery = MediaQuery.of(context);
     final screenHeight = mediaQuery.size.height;
-    final isDesktop = mediaQuery.size.width >= 800;
+    final screenWidth = mediaQuery.size.width;
+    final isMobile = screenWidth < 700;
 
     // Auto-scroll when new messages arrive
     ref.listen<ChatState>(advisorProvider, (previous, next) {
@@ -99,28 +117,30 @@ class _DigitalCounselorModalState extends ConsumerState<DigitalCounselorModal> {
       }
     });
 
-    return Container(
-      height: screenHeight * (isDesktop ? 0.88 : 0.94),
-      margin: EdgeInsets.symmetric(
-        horizontal: isDesktop ? (mediaQuery.size.width - 760) / 2 : 8,
-        vertical: 12,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.panel,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18),
-            blurRadius: 32,
-            offset: const Offset(0, 8),
-          ),
-        ],
-        border: Border.all(color: AppColors.line),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Column(
-          children: [
+    return Center(
+      child: Container(
+        width: isMobile ? double.infinity : 780,
+        height: screenHeight * (isMobile ? 0.94 : 0.88),
+        margin: EdgeInsets.symmetric(
+          horizontal: isMobile ? 8 : 16,
+          vertical: 12,
+        ),
+        decoration: BoxDecoration(
+          color: AppColors.panel,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.18),
+              blurRadius: 32,
+              offset: const Offset(0, 8),
+            ),
+          ],
+          border: Border.all(color: AppColors.line),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Column(
+            children: [
             // Modal Header
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -239,7 +259,7 @@ class _DigitalCounselorModalState extends ConsumerState<DigitalCounselorModal> {
                             Icon(Icons.policy_rounded, size: 16, color: _activeTab == 1 ? Colors.white : Colors.white60),
                             const SizedBox(width: 6),
                             Text(
-                              'Policy & Voice AI (FTS5)',
+                              'Policy & Voice AI',
                               style: TextStyle(
                                 color: _activeTab == 1 ? Colors.white : Colors.white60,
                                 fontWeight: _activeTab == 1 ? FontWeight.bold : FontWeight.w500,
@@ -405,13 +425,17 @@ class _DigitalCounselorModalState extends ConsumerState<DigitalCounselorModal> {
                         ),
                       ],
                     )
-                  : _PolicyVoiceTab(autoStartVoice: widget.autoStartVoice),
+                  : _PolicyVoiceTab(
+                      autoStartVoice: widget.autoStartVoice,
+                      currentRoute: widget.currentRoute,
+                    ),
             ),
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 class _OnlinePill extends StatelessWidget {
@@ -440,9 +464,40 @@ class _OnlinePill extends StatelessWidget {
   }
 }
 
+class _VoiceChatTurn {
+  final bool isUser;
+  final String text;
+  final String? speechText;
+  final String? engine;
+  final String? domain;
+  final String? recommendedAction;
+  final String? actionUrl;
+  final String? screenInstruction;
+  final List<dynamic> citations;
+  final DateTime timestamp;
+
+  _VoiceChatTurn({
+    required this.isUser,
+    required this.text,
+    this.speechText,
+    this.engine,
+    this.domain,
+    this.recommendedAction,
+    this.actionUrl,
+    this.screenInstruction,
+    this.citations = const [],
+    DateTime? timestamp,
+  }) : timestamp = timestamp ?? DateTime.now();
+}
+
 class _PolicyVoiceTab extends ConsumerStatefulWidget {
-  const _PolicyVoiceTab({this.autoStartVoice = false});
+  const _PolicyVoiceTab({
+    this.autoStartVoice = false,
+    this.currentRoute,
+  });
+
   final bool autoStartVoice;
+  final String? currentRoute;
 
   @override
   ConsumerState<_PolicyVoiceTab> createState() => _PolicyVoiceTabState();
@@ -450,14 +505,18 @@ class _PolicyVoiceTab extends ConsumerStatefulWidget {
 
 class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
   final TextEditingController _queryController = TextEditingController();
+  final ScrollController _voiceScrollController = ScrollController();
+  final List<_VoiceChatTurn> _conversationHistory = [];
   bool _isLoading = false;
   bool _isListening = false;
   bool _isSpeaking = false;
-  Map<String, dynamic>? _guidance;
   String? _errorMessage;
 
-  // Language selector state
+  // Language onboarding & selector state
+  bool _hasChosenLanguage = false;
   String _selectedLanguage = 'en-IN';
+  String _counselorGreeting = '';
+
   static const _languageOptions = [
     {'code': 'en-IN', 'label': 'English', 'icon': '🇬🇧'},
     {'code': 'hi-IN', 'label': 'हिन्दी', 'icon': '🇮🇳'},
@@ -477,12 +536,69 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
     _sttSub = SttService().onTranscriptChanged.listen((transcript) {
       if (mounted) setState(() => _queryController.text = transcript);
     });
+  }
 
-    if (widget.autoStartVoice) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _greetAndListen();
-      });
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_voiceScrollController.hasClients) {
+        _voiceScrollController.animateTo(
+          _voiceScrollController.position.maxScrollExtent + 350,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  void _selectLanguageAndGreet(String langCode) {
+    String greeting;
+    if (langCode == 'hi-IN') {
+      greeting = 'नमस्ते! मैं आपका डिजिटल यूनिवर्सिटी काउंसलर हूँ। आप मुझसे फीस, अटेंडेंस, विड्रॉल या किसी भी नियम के बारे में पूछ सकते हैं। बताइए, मैं आपकी क्या सहायता करूँ?';
+    } else if (langCode == 'hi-Latn') {
+      greeting = 'Hello! Main aapka University Counselor hoon. Attendance, exam rules, withdrawal refund ya kisi bhi policy ke baare mein poochiye! Main aapki kya help karoon?';
+    } else {
+      greeting = 'Hello! I am your University Digital Counselor. You can ask me about attendance rules, fee refunds, withdrawal clearance, or any campus policy. How can I help you today?';
     }
+
+    setState(() {
+      _selectedLanguage = langCode;
+      _hasChosenLanguage = true;
+      _counselorGreeting = greeting;
+      _conversationHistory.clear();
+      _conversationHistory.add(_VoiceChatTurn(
+        isUser: false,
+        text: greeting,
+        speechText: greeting,
+        domain: 'Campus Counselor',
+        engine: 'UniAssist Voice AI',
+      ));
+    });
+
+    _speakGuidance(greeting);
+
+    // Auto-listening removed: microphone is strictly push-to-talk to prevent ambient room noise pickup
+  }
+
+  void _restartConversation() {
+    TtsService().stop();
+    WebVoiceBridge.stopSpeaking();
+    WebVoiceBridge.stopListening();
+    setState(() {
+      _isListening = false;
+      _isSpeaking = false;
+      _isLoading = false;
+      _errorMessage = null;
+      _queryController.clear();
+      _conversationHistory.clear();
+      _conversationHistory.add(_VoiceChatTurn(
+        isUser: false,
+        text: _counselorGreeting.isNotEmpty ? _counselorGreeting : 'Ready to help you. What would you like to know?',
+        speechText: _counselorGreeting,
+        domain: 'Campus Counselor',
+        engine: 'UniAssist Voice AI',
+      ));
+    });
+    _scrollToBottom();
   }
 
   @override
@@ -494,21 +610,8 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
     _sttSub?.cancel();
     _ttsSub?.cancel();
     _queryController.dispose();
+    _voiceScrollController.dispose();
     super.dispose();
-  }
-
-  void _greetAndListen() {
-    final pageContext = ref.read(pageContextProvider);
-    final greeting = _selectedLanguage == 'hi-IN'
-        ? "नमस्ते! आप ${pageContext.screenName} पर हैं। कोई भी प्रश्न पूछें।"
-        : "Hello! You are on the ${pageContext.screenName}. Ask me any question, or ask what you can do on this screen.";
-    TtsService().speak(
-      greeting,
-      lang: _selectedLanguage == 'hi-Latn' ? 'en-IN' : _selectedLanguage,
-      onComplete: () {
-        if (mounted) _startListening();
-      },
-    );
   }
 
   Future<void> _askPolicy(String query, {bool speak = false}) async {
@@ -516,16 +619,37 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
     if (cleanQ.isEmpty) return;
 
     setState(() {
+      _conversationHistory.add(_VoiceChatTurn(
+        isUser: true,
+        text: cleanQ,
+      ));
       _isLoading = true;
       _errorMessage = null;
-      _queryController.text = cleanQ;
+      _queryController.clear();
     });
+    _scrollToBottom();
 
     try {
       final dio = ref.read(apiClientProvider);
       final auth = ref.read(authProvider);
       final studentId = auth.isAuthenticated ? auth.studentId : null;
-      final pageContext = ref.read(pageContextProvider);
+      final pageContext = widget.currentRoute != null
+          ? PageContextState.fromRoute(widget.currentRoute!)
+          : ref.read(pageContextProvider);
+
+      // Extract sliding window of recent conversation turns (max 6 turns before current query)
+      final historyPayload = _conversationHistory
+          .take(_conversationHistory.length - 1)
+          .toList()
+          .reversed
+          .take(6)
+          .toList()
+          .reversed
+          .map((t) => {
+                'role': t.isUser ? 'user' : 'assistant',
+                'content': t.text,
+              })
+          .toList();
 
       Response resp;
       try {
@@ -536,6 +660,7 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
             'student_id': studentId,
             'language': _selectedLanguage,
             'page_context': pageContext.toJson(),
+            'conversation_history': historyPayload,
           },
         );
       } catch (_) {
@@ -544,20 +669,39 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
           data: {
             'query': cleanQ,
             'student_id': studentId,
+            'language': _selectedLanguage,
             'page_context': pageContext.toJson(),
+            'conversation_history': historyPayload,
           },
         );
       }
 
       if (mounted) {
         final data = Map<String, dynamic>.from(resp.data as Map);
-        if (!data.containsKey('answer') && data.containsKey('response_text')) {
-          data['answer'] = data['response_text'];
-        }
+        final answer = (data['answer'] ?? data['response_text'] ?? '').toString();
+        final speech = (data['speech_text'] ?? answer).toString();
+        final engine = data['engine']?.toString() ?? 'Ollama Local AI (Llama 3.2)';
+        final domain = data['domain']?.toString();
+        final recAction = data['recommended_action']?.toString();
+        final actionUrl = data['action_url']?.toString();
+        final screenInst = data['screen_instruction']?.toString();
+        final citations = (data['citations'] is List) ? (data['citations'] as List) : const [];
+
         setState(() {
-          _guidance = data;
+          _conversationHistory.add(_VoiceChatTurn(
+            isUser: false,
+            text: answer,
+            speechText: speech,
+            engine: engine,
+            domain: domain,
+            recommendedAction: recAction,
+            actionUrl: actionUrl,
+            screenInstruction: screenInst,
+            citations: citations,
+          ));
           _isLoading = false;
         });
+        _scrollToBottom();
 
         // Trigger pulse highlight if target button exists
         if (data['highlight_target'] != null) {
@@ -566,11 +710,8 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
               .triggerHighlight(data['highlight_target'].toString());
         }
 
-        if (speak) {
-          final speech = data['speech_text'] ?? data['answer'] ?? '';
-          if (speech.isNotEmpty) {
-            _speakGuidance(speech.toString());
-          }
+        if (speak && speech.isNotEmpty) {
+          _speakGuidance(speech);
         }
       }
     } catch (e) {
@@ -583,26 +724,13 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
     }
   }
 
-  void _startListening() {
-    setState(() => _isListening = true);
-    SttService().startListening(
-      lang: _selectedLanguage == 'hi-Latn' ? 'en-IN' : _selectedLanguage,
-      onResult: (spokenText) {
-        if (mounted) {
-          setState(() {
-            _isListening = false;
-            _queryController.text = spokenText;
-          });
-          _askPolicy(spokenText, speak: true);
-        }
-      },
-      onError: () {
-        if (mounted) setState(() => _isListening = false);
-      },
-    );
-  }
-
   Future<void> _toggleVoice() async {
+    // 1. Immediately stop any active TTS speech so browser doesn't block the microphone
+    WebVoiceBridge.stopSpeaking();
+    if (_isSpeaking) {
+      setState(() => _isSpeaking = false);
+    }
+
     if (_isListening) {
       WebVoiceBridge.stopListening();
       setState(() => _isListening = false);
@@ -614,16 +742,21 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
       _errorMessage = null;
     });
 
+    ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
+      SnackBar(
         content: Row(
           children: [
-            Icon(Icons.mic_rounded, color: Colors.white, size: 20),
-            SizedBox(width: 8),
-            Text('Listening... Speak your university question now.'),
+            const Icon(Icons.mic_rounded, color: Colors.white, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              _selectedLanguage == 'hi-IN'
+                  ? 'सुन रहे हैं... कृपया अपना प्रश्न बोलें।'
+                  : 'Listening... Speak your question now.',
+            ),
           ],
         ),
-        duration: Duration(seconds: 4),
+        duration: const Duration(seconds: 4),
         backgroundColor: AppColors.primary,
       ),
     );
@@ -640,6 +773,10 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
       onError: (err) {
         if (mounted) {
           setState(() => _isListening = false);
+          final errLower = err.toLowerCase();
+          if (errLower.contains('aborted') || errLower.contains('no-speech')) {
+            return;
+          }
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Voice: $err. You can also tap any quick prompt below.'),
@@ -655,19 +792,21 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
   void _speakGuidance(String text) {
     if (text.isEmpty) return;
     setState(() => _isSpeaking = true);
-    WebVoiceBridge.speak(
+    final targetLang = _selectedLanguage == 'hi-Latn' ? 'en-IN' : _selectedLanguage;
+    TtsService().speak(
       text,
-      lang: _selectedLanguage == 'hi-Latn' ? 'en-IN' : _selectedLanguage,
+      lang: targetLang,
       rate: 0.95,
+      onComplete: () {
+        if (mounted) setState(() => _isSpeaking = false);
+      },
     );
-    Future.delayed(const Duration(seconds: 5), () {
-      if (mounted) setState(() => _isSpeaking = false);
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     final quickPrompts = [
+      {'label': 'What page are we on?', 'q': 'What page are we on and what should I do next?'},
       {'label': 'Attendance Shortage (ORD-7.2)', 'q': 'Can I write semester exams with 71% attendance?'},
       {'label': 'Lost ID Card Offset (ORD-14.4)', 'q': 'Can I offset lost ID card ₹200 fine from caution deposit?'},
       {'label': 'Withdrawal Slabs (ORD-14.1)', 'q': 'What is the tuition refund percentage for withdrawal?'},
@@ -676,7 +815,7 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
     ];
 
     final stopButton = IconButton(
-      tooltip: 'Stop response',
+      tooltip: 'Stop response / speaking',
       icon: Icon(
         _isSpeaking || _isListening ? Icons.stop_circle_rounded : Icons.stop_rounded,
         color: _isSpeaking || _isListening ? Colors.redAccent : AppColors.primary,
@@ -685,6 +824,7 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
       onPressed: () {
         TtsService().stop();
         WebVoiceBridge.stopListening();
+        WebVoiceBridge.stopSpeaking();
         SttService().stopListening();
         setState(() {
           _isListening = false;
@@ -693,319 +833,804 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
       },
     );
 
-    final citations = (_guidance != null && _guidance!['citations'] is List)
-        ? (_guidance!['citations'] as List)
-        : const [];
+    if (!_hasChosenLanguage) {
+      return _buildLanguageSelectionPrompt(context);
+    }
 
-    return SingleChildScrollView(
+    return Column(
       key: ValueKey('policy_voice_tab_$_selectedLanguage'),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Language Selector Row
-          Row(
-            children: _languageOptions.map((opt) {
-              final isSelected = _selectedLanguage == opt['code'];
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  selected: isSelected,
-                  label: Text(
-                    '${opt['icon']} ${opt['label']}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                      color: isSelected ? Colors.white : AppColors.ink,
-                    ),
-                  ),
-                  selectedColor: AppColors.primary,
-                  backgroundColor: Colors.white,
-                  side: BorderSide(color: isSelected ? AppColors.primary : AppColors.line),
-                  onSelected: (val) {
-                    if (val) setState(() => _selectedLanguage = opt['code']!);
-                  },
-                ),
-              );
-            }).toList(),
+      children: [
+        // 1. Top Controls Bar: Active Language & Controls
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(bottom: BorderSide(color: AppColors.line)),
           ),
-          const SizedBox(height: 12),
-
-          // Search & Voice input bar
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _isListening ? Colors.redAccent : AppColors.line, width: _isListening ? 2 : 1),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.primarySoft,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
                 ),
-              ],
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.search_rounded, color: AppColors.primary, size: 22),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: TextField(
-                    controller: _queryController,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                    decoration: InputDecoration(
-                      hintText: _isListening
-                          ? (_selectedLanguage == 'hi-IN' ? 'सुन रहे हैं...' : 'Listening to voice...')
-                          : (_selectedLanguage == 'hi-IN'
-                              ? 'विश्वविद्यालय अध्यादेश खोजें या प्रश्न पूछें...'
-                              : 'Search university ordinances or ask a question...'),
-                      hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade500),
-                      border: InputBorder.none,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _selectedLanguage == 'hi-IN'
+                          ? '🇮🇳 हिन्दी'
+                          : (_selectedLanguage == 'hi-Latn' ? '🔤 Hinglish' : '🇬🇧 English'),
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary),
                     ),
-                    onSubmitted: (val) => _askPolicy(val),
-                  ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.check_circle_rounded, size: 13, color: AppColors.primary),
+                  ],
                 ),
-                // Voice Push-to-Talk Button
-                IconButton(
-                  icon: Icon(
-                    _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-                    color: _isListening ? Colors.redAccent : AppColors.primary,
-                    size: 22,
-                  ),
-                  tooltip: 'Push to Talk (Voice Query)',
-                  onPressed: _toggleVoice,
+              ),
+              const SizedBox(width: 8),
+              TextButton.icon(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                stopButton,
-                ElevatedButton(
-                  onPressed: () => _askPolicy(_queryController.text),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                  child: Text(
-                    _selectedLanguage == 'hi-IN' ? 'पूछें' : 'Ask',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Quick Query Prompts
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: quickPrompts.map((p) {
+                onPressed: () {
+                  TtsService().stop();
+                  WebVoiceBridge.stopSpeaking();
+                  setState(() => _hasChosenLanguage = false);
+                },
+                icon: const Icon(Icons.tune_rounded, size: 13, color: AppColors.muted),
+                label: const Text('Change', style: TextStyle(fontSize: 11.5, color: AppColors.muted)),
+              ),
+              const SizedBox(width: 4),
+              ..._languageOptions.map((opt) {
+                final isSelected = _selectedLanguage == opt['code'];
                 return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ActionChip(
-                    backgroundColor: Colors.white,
-                    side: const BorderSide(color: AppColors.line),
-                    avatar: const Icon(Icons.policy_outlined, size: 14, color: AppColors.primary),
-                    label: Text(p['label']!, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                    onPressed: () => _askPolicy(p['q']!),
+                  padding: const EdgeInsets.only(left: 4),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () {
+                      if (!isSelected) {
+                        _selectLanguageAndGreet(opt['code']!);
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: isSelected ? AppColors.primary : Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: isSelected ? AppColors.primary : AppColors.line),
+                      ),
+                      child: Text(
+                        '${opt['icon']} ${opt['label']}',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                          color: isSelected ? Colors.white : AppColors.ink,
+                        ),
+                      ),
+                    ),
                   ),
                 );
-              }).toList(),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Loading State
-          if (_isLoading)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(28),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.line),
-              ),
-              child: Column(
-                children: [
-                  const CircularProgressIndicator(color: AppColors.primary),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Querying SQLite FTS5 BM25 Ordinance Index...',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Cross-referencing live student profile for personalized guidance.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
-                ],
-              ),
-            ),
-
-          // Error State
-          if (_errorMessage != null)
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.red.shade50,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.red.shade200),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.error_outline_rounded, color: Colors.redAccent),
-                  const SizedBox(width: 10),
-                  Expanded(child: Text(_errorMessage!, style: const TextStyle(color: Colors.redAccent, fontSize: 13))),
-                ],
-              ),
-            ),
-
-          // Guidance Response Card
-          if (!_isLoading && _guidance != null) ...[
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.06),
-                    blurRadius: 16,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: AppColors.primarySoft,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Icon(Icons.verified_user_rounded, color: AppColors.primary, size: 18),
+              }),
+              const Spacer(),
+              // Real-time Ollama status pill
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.green.shade300),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                        color: Colors.green,
+                        shape: BoxShape.circle,
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${_guidance!['domain'] ?? 'University'} Ordinance Guidance',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.primary),
-                      ),
-                      const Spacer(),
-                      // Voice TTS playback button
-                      IconButton(
-                        icon: Icon(
-                          _isSpeaking ? Icons.volume_up_rounded : Icons.volume_down_rounded,
-                          color: _isSpeaking ? AppColors.amityYellow : AppColors.primary,
-                          size: 22,
-                        ),
-                        tooltip: 'Listen to Spoken Guidance (TTS)',
-                        onPressed: () => _speakGuidance(_guidance!['answer'] ?? ''),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _guidance!['answer'] ?? '',
-                    style: const TextStyle(fontSize: 14.5, height: 1.5, color: AppColors.ink, fontWeight: FontWeight.w500),
-                  ),
-                  if (_guidance!['recommended_action'] != null) ...[
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          final url = _guidance!['action_url'] ?? '/forms';
-                          Navigator.of(context).pop();
-                          context.push(url.toString());
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-                        label: Text(
-                          _guidance!['recommended_action'].toString(),
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                        ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Text(
+                      'OLLAMA AI READY',
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.green,
+                        letterSpacing: 0.4,
                       ),
                     ),
                   ],
-                ],
+                ),
               ),
-            ).animate().fadeIn().slideY(begin: 0.05),
-
-            // Citations / Verified Clauses
-            if (citations.isNotEmpty) ...[
-              const SizedBox(height: 18),
-              const Row(
-                children: [
-                  Icon(Icons.menu_book_rounded, size: 16, color: AppColors.muted),
-                  SizedBox(width: 6),
-                  Text(
-                    'Official Legal Citations (Sub-5ms FTS5 Inverted Index)',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.muted),
-                  ),
-                ],
+              const SizedBox(width: 6),
+              // New conversation / reset button
+              IconButton(
+                tooltip: 'Start new topic / reset history',
+                icon: const Icon(Icons.restart_alt_rounded, size: 20, color: AppColors.muted),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: _restartConversation,
               ),
-              const SizedBox(height: 8),
-              ...citations.map((c) {
-                final clause = c is Map ? Map<String, dynamic>.from(c) : <String, dynamic>{};
-                final code = clause['clause_code'] ?? 'ORD';
-                final title = clause['title'] ?? 'University Regulation';
-                final content = clause['content'] ?? '';
+            ],
+          ),
+        ),
 
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.grey.shade200),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              code.toString(),
-                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primary),
-                            ),
+        // 2. Interactive Multi-Turn Conversation Stream
+        Expanded(
+          child: ListView.builder(
+            controller: _voiceScrollController,
+            padding: const EdgeInsets.all(16),
+            itemCount: _conversationHistory.length + (_isLoading ? 1 : 0) + (_errorMessage != null ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (index < _conversationHistory.length) {
+                final turn = _conversationHistory[index];
+                if (turn.isUser) {
+                  // User Speech Bubble (Right-aligned)
+                  return Align(
+                    alignment: Alignment.centerRight,
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 14, left: 48),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [AppColors.primary, Color(0xFF1E3A8A)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(16),
+                          topRight: Radius.circular(16),
+                          bottomLeft: Radius.circular(16),
+                          bottomRight: Radius.circular(4),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primary.withValues(alpha: 0.18),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              title.toString(),
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'You',
+                                style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(width: 4),
+                              const Icon(Icons.mic_rounded, color: Colors.white70, size: 13),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            turn.text,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w500,
+                              height: 1.4,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        content.toString(),
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.4),
+                    ).animate().fadeIn(duration: 200.ms).slideY(begin: 0.05),
+                  );
+                } else {
+                  // Counselor Assistant Bubble (Left-aligned)
+                  return Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 18, right: 32),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(4),
+                          topRight: Radius.circular(16),
+                          bottomLeft: Radius.circular(16),
+                          bottomRight: Radius.circular(16),
+                        ),
+                        border: Border.all(color: AppColors.line),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 12,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Header: Avatar, Domain, Engine Badge, Audio button
+                          Row(
+                            children: [
+                              Container(
+                                width: 34,
+                                height: 34,
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary,
+                                  borderRadius: BorderRadius.circular(17),
+                                ),
+                                child: const Icon(Icons.support_agent_rounded, color: Colors.white, size: 19),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${turn.domain ?? 'University'} Ordinance Guidance',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                        color: AppColors.primary,
+                                      ),
+                                    ),
+                                    if (turn.engine != null)
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            turn.engine!.contains('Ollama') ? Icons.memory_rounded : Icons.auto_awesome,
+                                            size: 11,
+                                            color: turn.engine!.contains('Ollama')
+                                                ? Colors.green.shade700
+                                                : Colors.purple.shade700,
+                                          ),
+                                          const SizedBox(width: 3),
+                                          Text(
+                                            turn.engine!,
+                                            style: TextStyle(
+                                              fontSize: 10.5,
+                                              color: turn.engine!.contains('Ollama')
+                                                  ? Colors.green.shade800
+                                                  : Colors.purple.shade700,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.volume_up_rounded, color: AppColors.primary, size: 21),
+                                tooltip: 'Listen to Spoken Guidance (TTS)',
+                                onPressed: () => _speakGuidance(turn.speechText ?? turn.text),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            turn.text,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              height: 1.48,
+                              color: AppColors.ink,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          // Screen Instruction if present
+                          if (turn.screenInstruction != null) ...[
+                            const SizedBox(height: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: AppColors.primarySoft,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: AppColors.primary.withValues(alpha: 0.15)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.touch_app_rounded, size: 14, color: AppColors.primary),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      turn.screenInstruction!,
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          // Recommended Action Navigation Button
+                          if (turn.recommendedAction != null) ...[
+                            const SizedBox(height: 14),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  final url = turn.actionUrl ?? '/forms';
+                                  Navigator.of(context).pop();
+                                  context.push(url);
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primary,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+                                label: Text(
+                                  turn.recommendedAction!,
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                ),
+                              ),
+                            ),
+                          ],
+                          // Citations (Legal Ordinances)
+                          if (turn.citations.isNotEmpty) ...[
+                            const SizedBox(height: 14),
+                            const Row(
+                              children: [
+                                Icon(Icons.menu_book_rounded, size: 14, color: AppColors.muted),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Official Legal Citations (Sub-5ms FTS5 Inverted Index)',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5, color: AppColors.muted),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            ...turn.citations.map((c) {
+                              final clause = c is Map ? Map<String, dynamic>.from(c) : <String, dynamic>{};
+                              final code = clause['clause_code'] ?? 'ORD';
+                              final title = clause['title'] ?? 'University Regulation';
+                              final content = clause['content'] ?? '';
+
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 6),
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade50,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.grey.shade200),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primary.withValues(alpha: 0.1),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            code.toString(),
+                                            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: AppColors.primary),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            title.toString(),
+                                            style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      content.toString(),
+                                      style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700, height: 1.35),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                          ],
+                        ],
+                      ),
+                    ).animate().fadeIn(duration: 250.ms).slideY(begin: 0.05),
+                  );
+                }
+              }
+
+              // Loading State Shimmer Card
+              if (_isLoading && index == _conversationHistory.length) {
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 14, right: 40),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.line),
+                  ),
+                  child: Row(
+                    children: [
+                      const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _selectedLanguage == 'hi-IN'
+                                  ? 'ओलामा (Llama 3.2) से परामर्श तैयार हो रहा है...'
+                                  : 'Ollama (Llama 3.2) is synthesizing guidance...',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            Text(
+                              'Verified against University FTS5 Ordinance Knowledge Base',
+                              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ).animate().fadeIn();
+              }
+
+              // Error State Banner
+              if (_errorMessage != null) {
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 14),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(_errorMessage!, style: const TextStyle(color: Colors.redAccent, fontSize: 12.5)),
                       ),
                     ],
                   ),
                 );
-              }),
+              }
+
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+
+        // 3. Bottom Tray: Quick Prompt Chips + Audio/Text Input Bar
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: AppColors.line)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Quick Prompt Chips
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: quickPrompts.map((p) {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8, bottom: 8),
+                      child: ActionChip(
+                        backgroundColor: AppColors.panel,
+                        side: const BorderSide(color: AppColors.line),
+                        avatar: const Icon(Icons.chat_bubble_outline_rounded, size: 13, color: AppColors.primary),
+                        label: Text(p['label']!, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600)),
+                        onPressed: () => _askPolicy(p['q']!, speak: true),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+
+              // Voice push-to-talk & Text Input row
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _queryController,
+                      decoration: InputDecoration(
+                        hintText: _isListening
+                            ? (_selectedLanguage == 'hi-IN' ? 'सुन रहे हैं... बोलिए...' : 'Listening... Speak now...')
+                            : (_selectedLanguage == 'hi-IN'
+                                ? 'प्रश्न पूछें या माइक दबाएं...'
+                                : 'Ask counselor or tap mic to speak...'),
+                        hintStyle: TextStyle(fontSize: 13.5, color: _isListening ? Colors.redAccent : Colors.grey.shade500),
+                        isDense: true,
+                        filled: true,
+                        fillColor: AppColors.panel,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide(color: _isListening ? Colors.redAccent : AppColors.line),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide(color: _isListening ? Colors.redAccent : AppColors.line),
+                        ),
+                      ),
+                      onSubmitted: (text) {
+                        if (text.trim().isNotEmpty) {
+                          _askPolicy(text.trim(), speak: true);
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  // Push to Talk Mic Button
+                  IconButton.filled(
+                    tooltip: _isListening ? 'Stop Listening' : 'Push to Talk (Microphone)',
+                    style: IconButton.styleFrom(
+                      backgroundColor: _isListening ? Colors.redAccent : AppColors.teal,
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: Icon(_isListening ? Icons.graphic_eq_rounded : Icons.mic_rounded, size: 20),
+                    onPressed: _toggleVoice,
+                  ),
+                  const SizedBox(width: 4),
+                  // Stop TTS / Stop speaking
+                  stopButton,
+                  const SizedBox(width: 4),
+                  // Send Text Button
+                  IconButton.filled(
+                    tooltip: 'Send text query',
+                    style: IconButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: const Icon(Icons.send_rounded, size: 18),
+                    onPressed: () {
+                      final text = _queryController.text.trim();
+                      if (text.isNotEmpty) {
+                        _askPolicy(text, speak: true);
+                      }
+                    },
+                  ),
+                ],
+              ),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLanguageSelectionPrompt(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 600;
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 620),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 20,
+                offset: const Offset(0, 6),
+              ),
+            ],
+            border: Border.all(color: AppColors.line),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Avatar & Header
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppColors.primary, AppColors.teal],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.25),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.record_voice_over_rounded, color: Colors.white, size: 32),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '👋 Welcome to UniAssist',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.ink),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'AI Digital Campus & Policy Counselor',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.primary),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Please choose your preferred language to begin voice counseling.\nशुरू करने के लिए अपनी पसंदीदा भाषा चुनें:',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, height: 1.4, color: Colors.grey.shade700),
+              ),
+              const SizedBox(height: 24),
+
+              // Language Choice Cards
+              if (isMobile)
+                Column(
+                  children: [
+                    _buildLanguageCard(
+                      flag: '🇬🇧',
+                      title: 'English',
+                      subtitle: 'Continue in English',
+                      badgeText: '✨ Voice AI & Policy Guidance',
+                      buttonText: 'Select English ➔',
+                      isAccent: false,
+                      onTap: () => _selectLanguageAndGreet('en-IN'),
+                    ),
+                    const SizedBox(height: 14),
+                    _buildLanguageCard(
+                      flag: '🇮🇳',
+                      title: 'हिन्दी',
+                      subtitle: 'हिंदी में आगे बढ़ें',
+                      badgeText: '✨ शुद्ध हिंदी उच्चारण और परामर्श',
+                      buttonText: 'हिंदी चुनें ➔',
+                      isAccent: true,
+                      onTap: () => _selectLanguageAndGreet('hi-IN'),
+                    ),
+                  ],
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildLanguageCard(
+                        flag: '🇬🇧',
+                        title: 'English',
+                        subtitle: 'Continue in English',
+                        badgeText: '✨ Voice AI & Policy Guidance',
+                        buttonText: 'Select English ➔',
+                        isAccent: false,
+                        onTap: () => _selectLanguageAndGreet('en-IN'),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: _buildLanguageCard(
+                        flag: '🇮🇳',
+                        title: 'हिन्दी',
+                        subtitle: 'हिंदी में आगे बढ़ें',
+                        badgeText: '✨ शुद्ध हिंदी उच्चारण और परामर्श',
+                        buttonText: 'हिंदी चुनें ➔',
+                        isAccent: true,
+                        onTap: () => _selectLanguageAndGreet('hi-IN'),
+                      ),
+                    ),
+                  ],
+                ),
+
+              const SizedBox(height: 18),
+              // Hinglish link
+              InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () => _selectLanguageAndGreet('hi-Latn'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('🔤', style: TextStyle(fontSize: 14)),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Prefer Hinglish? हिंग्लिश में बात करें (Conversational) ➔',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blueGrey.shade700,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).animate().fadeIn(duration: 250.ms).scale(begin: const Offset(0.97, 0.97));
+  }
+
+  Widget _buildLanguageCard({
+    required String flag,
+    required String title,
+    required String subtitle,
+    required String badgeText,
+    required String buttonText,
+    required bool isAccent,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: isAccent ? Colors.amber.shade50.withValues(alpha: 0.4) : AppColors.primarySoft,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isAccent ? Colors.amber.shade400 : AppColors.primary.withValues(alpha: 0.35),
+            width: 1.5,
+          ),
+        ),
+        child: Column(
+          children: [
+            Text(flag, style: const TextStyle(fontSize: 38)),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.w800,
+                color: isAccent ? Colors.deepOrange.shade900 : AppColors.primary,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+              ),
+              child: Text(
+                badgeText,
+                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                color: isAccent ? Colors.deepOrange.shade800 : AppColors.primary,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Center(
+                child: Text(
+                  buttonText,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+              ),
+            ),
           ],
-        ],
+        ),
       ),
     );
   }
