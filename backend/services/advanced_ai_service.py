@@ -13,7 +13,12 @@ from typing import Any
 import httpx
 
 from ..config import settings
-from .local_llm_service import generate_local_policy_answer
+from .local_llm_service import (
+    generate_local_policy_answer,
+    call_ollama_llama3,
+    clean_text_for_speech,
+    sanitize_and_verify_response,
+)
 from .nlp_service import route_intent, score_sentiment
 
 
@@ -160,55 +165,143 @@ def synthesize_guidance_with_gemini(
     citations: list[dict[str, Any]],
     student: dict[str, Any] | None = None,
     page_context: dict[str, Any] | None = None,
-) -> str | None:
-    """Synthesize concise spoken voice response from retrieved university policy/form citations."""
-    if settings.llm_enabled:
-        facts = "\n".join(
-            [
-                f"- [{c.get('clause_code', 'ORD')}] {c.get('title', '')}: {c.get('content', '')}"
-                for c in citations[:3]
-            ]
+    language: str = "en-IN",
+    return_source: bool = False,
+    history: list[dict[str, Any]] | None = None,
+) -> Any:
+    """Synthesize concise spoken voice response from retrieved university policy/form citations.
+
+    Implements a multi-tier waterfall router:
+    Tier 1 (Local): Ollama (Llama 3.2) on-premise inference
+    Tier 2 (Cloud): Google Gemini 1.5 Flash (if configured)
+    Tier 3 (Offline): Deterministic SQLite FTS5 Citation Formatter
+    """
+    from .local_llm_service import call_ollama_llama3, clean_text_for_speech
+    from ..data.kiosk_master_procedures import get_procedure_by_keyword
+
+    facts = "\n".join(
+        [
+            f"- [{c.get('clause_code', 'ORD')}] {c.get('title', '')}: {c.get('content', '')}"
+            for c in citations[:3]
+        ]
+    )
+
+    # Master Procedural Grounding (Pillar 1 & 3): Eliminate hallucinations like 'सेवा केंद्र 3'
+    matched_procedure = get_procedure_by_keyword(query)
+    if not matched_procedure and history:
+        combined_h = " ".join([str(h.get("content") or "").lower() for h in history[-3:]])
+        matched_procedure = get_procedure_by_keyword(combined_h)
+
+    if matched_procedure:
+        req_docs = ", ".join(matched_procedure.get("required_documents") or ["None required (100% digital process)"])
+        proc_grounding = (
+            f"\nOFFICIAL MASTER PROCEDURE GROUNDING:\n"
+            f"- Official Form: {matched_procedure.get('official_name', 'University Form')}\n"
+            f"- Kiosk Access: Download directly right here on this UniAssist kiosk screen using the action button below ({matched_procedure.get('action_label', 'Download Form')}). Never send student to wander across campus counters to obtain it.\n"
+            f"- Eligibility: {matched_procedure.get('eligibility', 'All eligible university members')}\n"
+            f"- Required Attachments: {req_docs}\n"
+            f"- Verified Submission Office: {matched_procedure.get('submission_office', 'UniAssist Portal / Department Desk')}\n"
+            f"- Turnaround SLA: {matched_procedure.get('deadline_sla', 'Standard campus SLA')}\n"
+        )
+        facts += proc_grounding
+
+    lang_instruction = ""
+    if language == "hi-IN":
+        lang_instruction = (
+            "\nCRITICAL LANGUAGE INSTRUCTION: The user has chosen HINDI (हिन्दी).\n"
+            "You MUST generate your entire answer and speech text ONLY in pure, natural, fluent Hindi "
+            "using Devanagari script (e.g. 'हाँ, आप 71% उपस्थिति के साथ परीक्षा दे सकते हैं, लेकिन आपको डीन छूट के लिए फॉर्म AC-04 जमा करना होगा...'). "
+            "Keep official form names (like Form AC-04) intact. Do NOT output English sentences.\n"
+        )
+    elif language == "hi-Latn":
+        lang_instruction = (
+            "\nCRITICAL LANGUAGE INSTRUCTION: The user has chosen HINGLISH.\n"
+            "You MUST generate your response in conversational Hinglish (Hindi written in Roman English alphabet, "
+            "e.g. 'Haan, aap 71% attendance ke sath exam de sakte hain, lekin aapko Dean condonation ke liye Form AC-04 submit karna hoga...').\n"
         )
 
-        prompt = textwrap.dedent(
-            f"""
-            You are UniAssist, the official university digital counselor and voice guide.
-            Answer the user query concisely, warmly, and empathetically using ONLY the verified university policy/form facts provided below.
+    history_context = ""
+    if history:
+        turns_summary = []
+        for t in history[-4:]:
+            r = "Student" if t.get("role") in ("user", "student") else "Counselor"
+            msg = str(t.get("content") or t.get("message") or "")[:200].strip()
+            if msg:
+                turns_summary.append(f"{r}: {msg}")
+        if turns_summary:
+            history_context = "\nRecent Conversation History:\n" + "\n".join(turns_summary) + "\n"
 
-            Strict Rules:
-            1. Never contradict or invent fees, room numbers, deadlines, or SLAs.
-            2. If the user asks what to do after getting a form, specify:
-               - Required supporting documents/attachments
-               - Exact submission desk/office/room
-               - Turnaround SLA
-            3. If the user asks where you can take them or asks for navigation, guide them to the appropriate portal.
-            4. Keep your answer under 3 to 4 clear spoken sentences suitable for text-to-speech reading. Avoid markdown bolding or asterisks.
+    prompt = textwrap.dedent(
+        f"""
+        You are UniAssist, the official university digital counselor and voice guide.
+        {lang_instruction}
+        Answer the user query concisely, warmly, and empathetically using ONLY the verified university policy/form facts provided below.
 
-            Verified University Knowledge:
-            {facts}
+        Strict Rules:
+        1. CLOSED-DOMAIN DOCUMENT RULE: Answer ONLY and EXCLUSIVELY using verified information from the verified university documents provided. If any information is not present in the documents, state that no matching university record is found. NEVER guess, assume, or extrapolate.
+        2. APP-SCOPE STRICT LIMITATION: Do NOT answer anything other than this university kiosk app's functionality (academics, 75% attendance rules, examinations, fee clearances, caution deposit offsets, withdrawal refunds, clearance tracking, and 31 official university forms). Politely refuse any off-topic inquiries.
+        3. Never contradict or invent fees, room numbers, deadlines, or SLAs.
+        4. KIOSK-FIRST RULE: Whenever a user asks how or where to get an official document or form, ALWAYS state that they can download it directly right here on this UniAssist kiosk screen using the action button below. NEVER tell them to wander or find physical counters to obtain the form.
+        5. ZERO FAKE ROOMS: NEVER invent non-existent campus locations, counters, or centers (such as 'सेवा केंद्र 3' or 'Service Center 3'). Physical submission is ONLY to verified rooms stated in the facts (e.g. Dean Room 201, Exam Cell Room 110, HR Room 103, Registrar Room 102).
+        6. FORM NAMING: Always use the proper official name of the form (e.g., 'Supplementary / Backpaper Examination Application (Form EX-02)' or 'Attendance Condonation Application (Form AC-04)'), NEVER cryptic abbreviations like 'EX-2'.
+        7. FORM EX-02 IS SOLELY FOR BACKPAPERS: Form EX-02 is strictly for supplementary/backpaper exams (INR 1,500 fee). Never suggest it for withdrawal, resignation, or refund.
+        8. NO LEGAL CODES IN SPEECH: Never recite internal legal codes (such as ORD-..., OCRM, or clause codes) in spoken text. Speak naturally like a warm, helpful campus counselor (e.g. 'विश्वविद्यालय के नियमों के अनुसार' or 'According to university rules').
+        9. FACULTY EXIT: If a faculty member asks about resignation or leaving job, direct them to HOD/Dean notice and HR Desk (Room 103). Never confuse faculty with students.
+        10. Sound like an attentive, helpful campus counselor (like ChatGPT Voice), not a dry legal statute.
+        11. Keep your answer under 3 to 4 clear spoken sentences suitable for text-to-speech reading. Avoid markdown bolding, asterisks, or rigid bullet lists.
+        12. End with a warm, natural follow-up or next-step offer (for example in English: "Would you like help starting this form?" or in Hindi: "क्या आप इस प्रक्रिया में और सहायता चाहते हैं?").
 
-            Active Student Context:
-            {student or 'Guest / Public Visitor'}
+        Verified University Knowledge:
+        {facts}
 
-            Active Screen:
-            {page_context or {}}
+        Active Student Context:
+        {student or 'Guest / Public Visitor'}
 
-            User Query:
-            {query}
-            """
-        ).strip()
+        Active Screen:
+        {page_context or {}}
+        {history_context}
+        User Query:
+        {query}
+        """
+    ).strip()
 
+    # --- Priority 1: Ollama Llama 3.2 Local (if provider is ollama or local auto-detect) ---
+    if settings.is_ollama_enabled or settings.llm_provider.lower() in ("ollama", "local"):
+        system_instruction = (
+            "You are UniAssist, an empathetic digital campus counselor at a university kiosk.\n"
+            + (f"Respond in pure Devanagari Hindi (हिन्दी).\n" if language == "hi-IN" else (f"Respond in conversational Hinglish.\n" if language == "hi-Latn" else "Respond in warm, spoken English.\n"))
+            + "STRICT RULES:\n"
+            "- Answer in 2-3 spoken sentences max strictly using the verified facts provided.\n"
+            "- Kiosk-First: Always instruct the user to download forms directly on this screen via the action button.\n"
+            "- ZERO FAKE ROOMS: NEVER invent non-existent campus locations or counters like 'सेवा केंद्र 3'. Submissions go ONLY to verified rooms (Dean Room 201, Exam Cell Room 110, HR Room 103, Registrar Room 102).\n"
+            "- Never mention internal clause codes (ORD-..., OCRM) in speech.\n"
+            "- Use full official form names, not 'EX-2'.\n"
+            "- Avoid markdown asterisks, bolding, and bullet points."
+        )
+        ollama_reply = call_ollama_llama3(prompt, system_instruction, history=history)
+        if ollama_reply and ollama_reply.strip():
+            clean_reply = sanitize_and_verify_response(ollama_reply.strip())
+            return (clean_reply, "Ollama Local AI (Llama 3.2)") if return_source else clean_reply
+
+    # --- Priority 2: Gemini Cloud Hybrid Fallback ---
+    if settings.llm_enabled:
         url = (
             "https://generativelanguage.googleapis.com/v1beta/models/"
             f"{settings.gemini_model}:generateContent?key={settings.gemini_api_key}"
         )
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.2,
+                "thinkingConfig": {"thinkingBudget": 0},
+            },
+        }
 
         try:
             response = httpx.post(
                 url,
                 json=payload,
-                timeout=settings.llm_timeout_seconds,
+                timeout=max(settings.llm_timeout_seconds, 10.0),
             )
             response.raise_for_status()
             data = response.json()
@@ -219,12 +312,18 @@ def synthesize_guidance_with_gemini(
                 .get("text")
             )
             if text and text.strip():
-                return text.strip()
+                clean_text = sanitize_and_verify_response(text.strip())
+                return (clean_text, "Gemini Hybrid AI") if return_source else clean_text
         except Exception:
             pass
 
-    local_answer = generate_local_policy_answer(query, citations, student, page_context)
-    return local_answer if local_answer else None
+    # --- Priority 3: Deterministic SQLite FTS5 Citation Formatter (100% Offline) ---
+    local_answer = generate_local_policy_answer(
+        query, citations, student, page_context, language=language, use_ollama=False
+    )
+    if local_answer:
+        return (local_answer, "SQLite FTS5 (Local Offline)") if return_source else local_answer
+    return None
 
 
 def advanced_reply(
