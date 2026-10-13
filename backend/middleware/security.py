@@ -25,21 +25,18 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = (
-            "geolocation=(), microphone=(), camera=(), payment=()"
+            "geolocation=(), microphone=(self), camera=(), payment=()"
         )
         connect_sources = " ".join(settings.cors_origins)
-        script_policy = "'self' https://fonts.googleapis.com"
-        style_policy = "'self' https://fonts.googleapis.com https://fonts.gstatic.com"
-        if not settings.is_production:
-            script_policy += " 'unsafe-inline'"
-            style_policy += " 'unsafe-inline'"
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            f"script-src {script_policy}; "
-            f"style-src {style_policy}; "
-            "font-src 'self' https://fonts.gstatic.com; "
-            "img-src 'self' data:; "
-            f"connect-src 'self' {connect_sources}; base-uri 'self'; form-action 'self';"
+            "default-src 'self' data: blob:; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: https://fonts.googleapis.com https://www.gstatic.com; "
+            "worker-src 'self' blob:; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; "
+            "font-src 'self' data: https://fonts.gstatic.com; "
+            "img-src 'self' data: blob: https:; "
+            f"connect-src 'self' {connect_sources} https://www.gstatic.com https://fonts.googleapis.com https://fonts.gstatic.com blob: data:; "
+            "base-uri 'self'; form-action 'self';"
         )
         if settings.is_production:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"

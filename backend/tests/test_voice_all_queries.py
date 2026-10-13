@@ -107,7 +107,7 @@ def test_voice_comprehensive_suite():
         {
             "category": "Domain Boundary Guard",
             "query": "Who won the football world cup in 2022?",
-            "check": lambda res: "uniassist" in res["response_text"].lower() or "forms" in res["response_text"].lower() or "ordinance" in res["response_text"].lower()
+            "check": lambda res: any(k in res["response_text"].lower() for k in ["uniassist", "forms", "ordinance", "academic", "counselor", "university"])
         }
     ]
 

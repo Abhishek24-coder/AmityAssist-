@@ -19,7 +19,9 @@ router = APIRouter(prefix="/api/policy", tags=["Policy Intelligence & FTS5"])
 class PolicyGuideRequest(BaseModel):
     query: str = Field(..., min_length=2, max_length=500, description="Inquiry regarding university policy")
     student_id: Optional[str] = Field(None, description="Optional student ID for personalization")
+    language: str = Field("en-IN", description="Selected language e.g. en-IN, hi-IN, hi-Latn")
     page_context: Optional[dict[str, Any]] = Field(None, description="Active client screen context")
+    conversation_history: Optional[list[dict[str, Any]]] = Field(None, description="Recent conversation turns")
 
 
 @router.get("/search")
@@ -44,6 +46,8 @@ async def get_policy_guidance(body: PolicyGuideRequest) -> dict[str, Any]:
         query=body.query,
         student_id=body.student_id,
         page_context=body.page_context,
+        language=body.language,
+        history=body.conversation_history,
     )
     return guidance
 
@@ -55,6 +59,22 @@ async def get_policy_categories() -> dict[str, Any]:
     return {
         "categories": categories,
         "total_ordinances": len(DEFAULT_POLICIES),
+    }
+
+
+@router.get("/llm/status")
+async def get_llm_status() -> dict[str, Any]:
+    """Return active LLM provider configuration and local Ollama daemon connectivity status."""
+    from ..config import settings
+    from ..services.local_llm_service import check_ollama_status
+
+    ollama_info = check_ollama_status()
+    return {
+        "active_provider": settings.llm_provider,
+        "is_ollama_enabled": settings.is_ollama_enabled,
+        "is_gemini_enabled": settings.llm_enabled,
+        "gemini_model": settings.gemini_model if settings.llm_enabled else None,
+        "ollama": ollama_info,
     }
 
 

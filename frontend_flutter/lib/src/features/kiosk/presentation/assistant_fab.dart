@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../chat/presentation/digital_counselor_modal.dart';
 import '../../../core/theme/kiosk_theme.dart';
+import '../../../core/services/page_context_service.dart';
 
-class AssistantFab extends StatelessWidget {
-  const AssistantFab({super.key});
+class AssistantFab extends ConsumerWidget {
+  const AssistantFab({super.key, this.currentRoute});
 
-  void _showModeSelection(BuildContext context) {
+  final String? currentRoute;
+
+  void _showModeSelection(BuildContext context, WidgetRef ref) {
+    if (currentRoute != null) {
+      ref.read(pageContextProvider.notifier).setRoute(currentRoute!);
+    }
     showDialog(
       context: context,
       builder: (context) {
@@ -34,7 +41,15 @@ class AssistantFab extends StatelessWidget {
                         color: AppColors.teal,
                         onTap: () {
                           Navigator.pop(context);
-                          showDigitalCounselor(context, initialTab: 1, autoStartVoice: true);
+                          if (currentRoute != null) {
+                            ref.read(pageContextProvider.notifier).setRoute(currentRoute!);
+                          }
+                          showDigitalCounselor(
+                            context,
+                            initialTab: 1,
+                            autoStartVoice: false,
+                            currentRoute: currentRoute,
+                          );
                         },
                       ),
                     ),
@@ -46,7 +61,14 @@ class AssistantFab extends StatelessWidget {
                         color: AppColors.primary,
                         onTap: () {
                           Navigator.pop(context);
-                          showDigitalCounselor(context, initialTab: 0);
+                          if (currentRoute != null) {
+                            ref.read(pageContextProvider.notifier).setRoute(currentRoute!);
+                          }
+                          showDigitalCounselor(
+                            context,
+                            initialTab: 0,
+                            currentRoute: currentRoute,
+                          );
                         },
                       ),
                     ),
@@ -61,9 +83,9 @@ class AssistantFab extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return FloatingActionButton.extended(
-      onPressed: () => _showModeSelection(context),
+      onPressed: () => _showModeSelection(context, ref),
       backgroundColor: AppColors.primary,
       icon: const Icon(Icons.support_agent_rounded, color: Colors.white, size: 28),
       label: const Text(

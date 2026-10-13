@@ -35,6 +35,9 @@ class Settings:
     s3_bucket_documents: str = os.getenv("S3_BUCKET_DOCUMENTS", "uniassist-documents")
 
     llm_provider: str = os.getenv("LLM_PROVIDER", "local")
+    ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    ollama_model: str = os.getenv("OLLAMA_MODEL", "llama3.2")
+    ollama_timeout_seconds: float = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "20.0"))
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
     llm_timeout_seconds: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "8"))
@@ -56,6 +59,10 @@ class Settings:
     @property
     def is_production(self) -> bool:
         return self.environment.lower() == "production"
+
+    @property
+    def is_ollama_enabled(self) -> bool:
+        return self.llm_provider.lower() == "ollama"
 
     @property
     def llm_enabled(self) -> bool:

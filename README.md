@@ -34,6 +34,8 @@ Completed baseline:
 - Phase 28 multi-university white-label configurator: institution branding settings (name, crest URL, theme colors), dynamic clearance chain desk configuration, and custom refund day slabs.
 - Phase 29 intelligent search & policy guidance: SQLite FTS5 sub-5ms BM25 ordinance search, hybrid RAG guidance, and push-to-talk voice endpoints.
 - Phase 30 production features: Multi-language voice/counselor switcher (English, Hindi, Hinglish) & dynamic AI stop button; Notesheet Word (.docx) export with official institutional headers, signature audit trails, and digital verification seal; and Interactive Procedure Setup Wizard allowing university admins to design custom multi-desk sequential approval workflows, document checklists, and SLA targets.
+- **Phase 31 White-Label Generalization & Institutional Setup Guide**: Complete technical specification and implementation manual for zero-code multi-university adoption, feature switchboard, and dynamic procedure customization etched in [GENERALIZATION_SETUP_GUIDE.md](file:///c:/Users/HP/ANtiAgentBuilding/GENERALIZATION_SETUP_GUIDE.md).
+- **Phase 32 On-Premise Local AI Engine (Ollama / Llama 3.2)**: 100% private, air-gapped on-premise AI integration powered by Ollama and Meta's Llama 3.2 (3B). Features zero cloud data egress, sub-second latency (~0.8s), multi-tier waterfall fallback routing (`Ollama (Llama 3.2)` ➔ `Gemini 1.5 Flash` ➔ `Deterministic SQLite FTS5`), clean speech text sanitization, and automated `/api/policy/llm/status` diagnostics.
 
 Remaining production work:
 
@@ -128,6 +130,7 @@ GET  /api/registry/roster/{branch_or_course}
 GET  /api/registry/events
 GET  /api/policy/search?q=...
 POST /api/policy/guide
+GET  /api/policy/llm/status
 POST /api/voice/query
 GET  /api/procedures
 GET  /api/procedures/{procedure_id}

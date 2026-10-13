@@ -24,10 +24,15 @@ limiter = Limiter(key_func=get_remote_address, default_limits=[settings.rate_lim
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialise DB before accepting requests; cleanup on shutdown."""
+    """Initialise DB and ensure local Ollama AI daemon is active before accepting requests."""
     if settings.is_production and settings.jwt_secret_key == "change-me-in-production":
         raise RuntimeError("JWT_SECRET_KEY must be configured in production.")
     init_db()
+    try:
+        from backend.services.local_llm_service import ensure_ollama_daemon_running
+        ensure_ollama_daemon_running()
+    except Exception:
+        pass
     yield
 
 
@@ -121,3 +126,20 @@ async def telemetry_snapshot(request: Request):
     """Operational telemetry, restricted to staff administrators."""
     require_any_role(request, {"Registrar", "Administrator"})
     return telemetry.snapshot()
+
+
+from fastapi.responses import FileResponse, JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+# ── Web Frontend Mount & SPA Fallback ─────────────────────────────────────────
+web_dir = Path("frontend_flutter/build/web")
+if web_dir.exists() and (web_dir / "index.html").exists():
+    @app.exception_handler(StarletteHTTPException)
+    async def spa_fallback_handler(request: Request, exc: StarletteHTTPException):
+        if exc.status_code == 404 and not request.url.path.startswith("/api/") and not request.url.path.startswith("/forms/"):
+            index_path = web_dir / "index.html"
+            if index_path.exists():
+                return FileResponse(str(index_path))
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+    app.mount("/", StaticFiles(directory=str(web_dir), html=True), name="frontend_web")

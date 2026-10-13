@@ -50,28 +50,28 @@ class UniAssistApp extends ConsumerWidget {
         GoRoute(path: '/', builder: (context, state) => const KioskWelcomeScreen()),
         GoRoute(path: '/services', builder: (context, state) => const GuestServicesScreen()),
         GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
-        GoRoute(path: '/dashboard', builder: (context, state) => const _KioskSession(child: DashboardScreen())),
-        GoRoute(path: '/request-status', builder: (context, state) => const _KioskSession(child: RequestStatusScreen())),
-        GoRoute(path: '/documents', builder: (context, state) => const _KioskSession(child: DocumentCenterScreen())),
-        GoRoute(path: '/forms', builder: (context, state) => const _KioskSession(child: FormsCatalogScreen())),
-        GoRoute(path: '/academics', builder: (context, state) => const _KioskSession(child: AcademicsScreen())),
-        GoRoute(path: '/scholarship', builder: (context, state) => const _KioskSession(child: ScholarshipScreen())),
-        GoRoute(path: '/grievance', builder: (context, state) => const _KioskSession(child: GrievanceScreen())),
-        GoRoute(path: '/withdrawal', builder: (context, state) => const _KioskSession(child: WithdrawalHomeScreen())),
-        GoRoute(path: '/withdrawal/flow', builder: (context, state) => const _KioskSession(child: WithdrawalFlowScreen())),
-        GoRoute(path: '/notifications', builder: (context, state) => const _KioskSession(child: NotificationsScreen())),
-        GoRoute(path: '/notices', builder: (context, state) => const _KioskSession(child: NoticesScreen())),
-        GoRoute(path: '/chat', builder: (context, state) => const _KioskSession(child: ChatScreen())),
-        GoRoute(path: '/staff', builder: (context, state) => const _StaffSession(child: StaffDashboardScreen())),
-        GoRoute(path: '/staff/withdrawals', builder: (context, state) => const _StaffSession(child: StaffWithdrawalScreen())),
-        GoRoute(path: '/staff/grievances', builder: (context, state) => const _StaffSession(child: StaffGrievanceScreen())),
-        GoRoute(path: '/staff/documents', builder: (context, state) => const _StaffSession(child: StaffDocumentScreen())),
-        GoRoute(path: '/staff/notesheets', builder: (context, state) => const _StaffSession(child: StaffNotesheetScreen())),
-        GoRoute(path: '/staff/registry', builder: (context, state) => const _StaffSession(child: StaffRegistryScreen())),
-        GoRoute(path: '/staff/ocr', builder: (context, state) => const _StaffSession(child: StaffDocumentOcrScreen())),
-        GoRoute(path: '/staff/accreditation', builder: (context, state) => const _StaffSession(child: StaffAccreditationScreen())),
-        GoRoute(path: '/staff/institution', builder: (context, state) => const _StaffSession(child: StaffInstitutionScreen())),
-        GoRoute(path: '/staff/procedures', builder: (context, state) => const _StaffSession(child: StaffProcedureWizardScreen())),
+        GoRoute(path: '/dashboard', builder: (context, state) => const _KioskSession(route: '/dashboard', child: DashboardScreen())),
+        GoRoute(path: '/request-status', builder: (context, state) => const _KioskSession(route: '/request-status', child: RequestStatusScreen())),
+        GoRoute(path: '/documents', builder: (context, state) => const _KioskSession(route: '/documents', child: DocumentCenterScreen())),
+        GoRoute(path: '/forms', builder: (context, state) => const _KioskSession(route: '/forms', child: FormsCatalogScreen())),
+        GoRoute(path: '/academics', builder: (context, state) => const _KioskSession(route: '/academics', child: AcademicsScreen())),
+        GoRoute(path: '/scholarship', builder: (context, state) => const _KioskSession(route: '/scholarship', child: ScholarshipScreen())),
+        GoRoute(path: '/grievance', builder: (context, state) => const _KioskSession(route: '/grievance', child: GrievanceScreen())),
+        GoRoute(path: '/withdrawal', builder: (context, state) => const _KioskSession(route: '/withdrawal', child: WithdrawalHomeScreen())),
+        GoRoute(path: '/withdrawal/flow', builder: (context, state) => const _KioskSession(route: '/withdrawal/flow', child: WithdrawalFlowScreen())),
+        GoRoute(path: '/notifications', builder: (context, state) => const _KioskSession(route: '/notifications', child: NotificationsScreen())),
+        GoRoute(path: '/notices', builder: (context, state) => const _KioskSession(route: '/notices', child: NoticesScreen())),
+        GoRoute(path: '/chat', builder: (context, state) => const _KioskSession(route: '/chat', child: ChatScreen())),
+        GoRoute(path: '/staff', builder: (context, state) => const _StaffSession(route: '/staff', child: StaffDashboardScreen())),
+        GoRoute(path: '/staff/withdrawals', builder: (context, state) => const _StaffSession(route: '/staff/withdrawals', child: StaffWithdrawalScreen())),
+        GoRoute(path: '/staff/grievances', builder: (context, state) => const _StaffSession(route: '/staff/grievances', child: StaffGrievanceScreen())),
+        GoRoute(path: '/staff/documents', builder: (context, state) => const _StaffSession(route: '/staff/documents', child: StaffDocumentScreen())),
+        GoRoute(path: '/staff/notesheets', builder: (context, state) => const _StaffSession(route: '/staff/notesheets', child: StaffNotesheetScreen())),
+        GoRoute(path: '/staff/registry', builder: (context, state) => const _StaffSession(route: '/staff/registry', child: StaffRegistryScreen())),
+        GoRoute(path: '/staff/ocr', builder: (context, state) => const _StaffSession(route: '/staff/ocr', child: StaffDocumentOcrScreen())),
+        GoRoute(path: '/staff/accreditation', builder: (context, state) => const _StaffSession(route: '/staff/accreditation', child: StaffAccreditationScreen())),
+        GoRoute(path: '/staff/institution', builder: (context, state) => const _StaffSession(route: '/staff/institution', child: StaffInstitutionScreen())),
+        GoRoute(path: '/staff/procedures', builder: (context, state) => const _StaffSession(route: '/staff/procedures', child: StaffProcedureWizardScreen())),
       ],
     );
 
@@ -85,9 +85,10 @@ class UniAssistApp extends ConsumerWidget {
 }
 
 class _KioskSession extends ConsumerStatefulWidget {
-  const _KioskSession({required this.child});
+  const _KioskSession({required this.child, this.route});
 
   final Widget child;
+  final String? route;
 
   @override
   ConsumerState<_KioskSession> createState() => _KioskSessionState();
@@ -101,6 +102,25 @@ class _KioskSessionState extends ConsumerState<_KioskSession> {
   void initState() {
     super.initState();
     _resetTimer();
+    if (widget.route != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ref.read(pageContextProvider.notifier).setRoute(widget.route!);
+        }
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(_KioskSession oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.route != null && widget.route != oldWidget.route) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ref.read(pageContextProvider.notifier).setRoute(widget.route!);
+        }
+      });
+    }
   }
 
   @override
@@ -132,10 +152,10 @@ class _KioskSessionState extends ConsumerState<_KioskSession> {
       child: Stack(
         children: [
           widget.child,
-          const Positioned(
+          Positioned(
             right: 24,
             bottom: 24,
-            child: AssistantFab(),
+            child: AssistantFab(currentRoute: widget.route),
           ),
         ],
       ),
@@ -144,18 +164,19 @@ class _KioskSessionState extends ConsumerState<_KioskSession> {
 }
 
 class _StaffSession extends StatelessWidget {
-  const _StaffSession({required this.child});
+  const _StaffSession({required this.child, this.route = '/staff'});
   final Widget child;
+  final String route;
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
         child,
-        const Positioned(
+        Positioned(
           right: 24,
           bottom: 24,
-          child: AssistantFab(),
+          child: AssistantFab(currentRoute: route),
         ),
       ],
     );
@@ -166,11 +187,10 @@ class _PageContextObserver extends NavigatorObserver {
   final void Function(String route) onRouteChanged;
   _PageContextObserver(this.onRouteChanged);
 
-  @override
-  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
-    super.didPush(route, previousRoute);
+  void _notifyIfValid(Route<dynamic>? route) {
+    if (route == null) return;
     final name = route.settings.name ?? route.settings.arguments?.toString() ?? '';
-    if (name.isNotEmpty) {
+    if (name.isNotEmpty && !name.contains('ModalBottomSheet')) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         onRouteChanged(name);
       });
@@ -178,13 +198,20 @@ class _PageContextObserver extends NavigatorObserver {
   }
 
   @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPush(route, previousRoute);
+    _notifyIfValid(route);
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPop(route, previousRoute);
+    _notifyIfValid(previousRoute);
+  }
+
+  @override
   void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
     super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
-    final name = newRoute?.settings.name ?? '';
-    if (name.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        onRouteChanged(name);
-      });
-    }
+    _notifyIfValid(newRoute);
   }
 }

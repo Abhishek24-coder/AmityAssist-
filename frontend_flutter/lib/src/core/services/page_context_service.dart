@@ -25,7 +25,20 @@ class PageContextState {
       };
 
   factory PageContextState.fromRoute(String route) {
-    if (route.contains('withdrawal')) {
+    final cleanRoute = route.toLowerCase().trim();
+    if (cleanRoute.contains('withdrawal/flow')) {
+      return const PageContextState(
+        route: '/withdrawal/flow',
+        screenName: 'Withdrawal Clearance Workflow',
+        availableActions: [
+          'Verify Academic Clearance Gate',
+          'Review Library & Lab Dues',
+          'Calculate Caution Deposit Refund',
+          'Submit Final Clearance'
+        ],
+        primaryAction: 'Verify Academic Clearance Gate',
+      );
+    } else if (cleanRoute.contains('withdrawal')) {
       return const PageContextState(
         route: '/withdrawal',
         screenName: 'Program Withdrawal Portal',
@@ -37,7 +50,7 @@ class PageContextState {
         ],
         primaryAction: 'Initiate Withdrawal Request',
       );
-    } else if (route.contains('academics')) {
+    } else if (cleanRoute.contains('academics')) {
       return const PageContextState(
         route: '/academics',
         screenName: 'Academics & Examination Registry',
@@ -49,7 +62,7 @@ class PageContextState {
         ],
         primaryAction: 'Register for Backpaper Exam',
       );
-    } else if (route.contains('forms')) {
+    } else if (cleanRoute.contains('forms')) {
       return const PageContextState(
         route: '/forms',
         screenName: 'Institutional Forms & Applications Catalog',
@@ -61,9 +74,9 @@ class PageContextState {
         ],
         primaryAction: 'Bonafide Certificate Request',
       );
-    } else if (route.contains('scholarship')) {
+    } else if (cleanRoute.contains('scholarship')) {
       return const PageContextState(
-        route: '/scholarships',
+        route: '/scholarship',
         screenName: 'Merit & Need Scholarships Portal',
         availableActions: [
           'Apply for Merit Scholarship',
@@ -72,7 +85,73 @@ class PageContextState {
         ],
         primaryAction: 'Apply for Merit Scholarship',
       );
-    } else if (route.contains('staff')) {
+    } else if (cleanRoute.contains('grievance')) {
+      return const PageContextState(
+        route: '/grievance',
+        screenName: 'Student Grievance Redressal Desk',
+        availableActions: [
+          'Submit Grievance Ticket',
+          'Track Complaint Status',
+          'Contact Student Welfare Dean'
+        ],
+        primaryAction: 'Submit Grievance Ticket',
+      );
+    } else if (cleanRoute.contains('request-status')) {
+      return const PageContextState(
+        route: '/request-status',
+        screenName: 'Service Request Status Tracker',
+        availableActions: [
+          'View Active Applications',
+          'Check Approval Timeline',
+          'Download Acknowledgement Slip'
+        ],
+        primaryAction: 'View Active Applications',
+      );
+    } else if (cleanRoute.contains('documents')) {
+      return const PageContextState(
+        route: '/documents',
+        screenName: 'Digital Document Center & Certificates',
+        availableActions: [
+          'Download Degree Certificate',
+          'View Verified Transcripts',
+          'Request Migration Certificate'
+        ],
+        primaryAction: 'Download Degree Certificate',
+      );
+    } else if (cleanRoute.contains('notices')) {
+      return const PageContextState(
+        route: '/notices',
+        screenName: 'Official University Notices & Circulars',
+        availableActions: [
+          'Read Academic Calendar',
+          'View Examination Circulars',
+          'Filter Campus Notifications'
+        ],
+        primaryAction: 'Read Academic Calendar',
+      );
+    } else if (cleanRoute.contains('notifications')) {
+      return const PageContextState(
+        route: '/notifications',
+        screenName: 'Student Notifications & Alerts',
+        availableActions: [
+          'Mark All as Read',
+          'Check Fee Reminders',
+          'View Attendance Alerts'
+        ],
+        primaryAction: 'Check Fee Reminders',
+      );
+    } else if (cleanRoute.contains('chat')) {
+      return const PageContextState(
+        route: '/chat',
+        screenName: 'AI Student Advisory & Counseling Chat',
+        availableActions: [
+          'Ask Academic Counselor',
+          'Inquire About Fees & Rules',
+          'Get Campus Assistance'
+        ],
+        primaryAction: 'Ask Academic Counselor',
+      );
+    } else if (cleanRoute.contains('staff')) {
       return const PageContextState(
         route: '/staff',
         screenName: 'Registrar Staff Desk & Decision Registry',
@@ -82,6 +161,28 @@ class PageContextState {
           'Filter Pending Approvals'
         ],
         primaryAction: 'Review Disciplinary Notesheet',
+      );
+    } else if (cleanRoute.contains('services')) {
+      return const PageContextState(
+        route: '/services',
+        screenName: 'Guest University Services Directory',
+        availableActions: [
+          'Explore Campus Services',
+          'View Department Counters',
+          'Check Office Hours'
+        ],
+        primaryAction: 'Explore Campus Services',
+      );
+    } else if (cleanRoute.contains('login')) {
+      return const PageContextState(
+        route: '/login',
+        screenName: 'Student Identity Sign-In',
+        availableActions: [
+          'Enter Student Enrollment ID',
+          'Scan Campus Smart Card',
+          'Sign In with University Credentials'
+        ],
+        primaryAction: 'Enter Student Enrollment ID',
       );
     }
 
