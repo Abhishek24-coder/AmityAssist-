@@ -72,6 +72,9 @@ class UniAssistApp extends ConsumerWidget {
         GoRoute(path: '/staff/accreditation', builder: (context, state) => const _StaffSession(route: '/staff/accreditation', child: StaffAccreditationScreen())),
         GoRoute(path: '/staff/institution', builder: (context, state) => const _StaffSession(route: '/staff/institution', child: StaffInstitutionScreen())),
         GoRoute(path: '/staff/procedures', builder: (context, state) => const _StaffSession(route: '/staff/procedures', child: StaffProcedureWizardScreen())),
+        GoRoute(path: '/staff/status-registry', builder: (context, state) => const _StaffSession(route: '/staff/registry', child: StaffRegistryScreen())),
+        GoRoute(path: '/staff/procedures/builder', builder: (context, state) => const _StaffSession(route: '/staff/procedures', child: StaffProcedureWizardScreen())),
+        GoRoute(path: '/staff/ocr-cockpit', builder: (context, state) => const _StaffSession(route: '/staff/ocr', child: StaffDocumentOcrScreen())),
       ],
     );
 
