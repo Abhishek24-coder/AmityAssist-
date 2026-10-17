@@ -5,6 +5,7 @@ Supports multi-role staff: Registrar, Department Coordinator, Finance, Scholarsh
 """
 
 import json
+from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -17,6 +18,223 @@ router = APIRouter(prefix="/api/admin", tags=["Admin"])
 # ── Request Status Models ──────────────────────────────────────────────────────
 class StatusUpdate(BaseModel):
     status: str
+    message: Optional[str] = None
+
+
+class RequestReviewMessage(BaseModel):
+    message: str
+    status: Optional[str] = None
+    actor: Optional[str] = "Staff (Registrar Office)"
+
+
+class DocumentReviewAction(BaseModel):
+    document_id: int
+    status: str  # "verified" or "rejected"
+    notes: Optional[str] = None
+
+
+class ChecklistItemUpdate(BaseModel):
+    status: str  # "completed" or "pending"
+
+
+@router.get("/requests/{req_id}/review-details")
+async def get_request_review_details(req_id: int, request: Request = None):
+    """Fetch complete review dossier for a withdrawal request: student profile, uploaded documents, clearance gates, checklist items, and event history."""
+    require_any_role(request, {"Registrar", "Administrator", "Department Coordinator", "Finance Department", "Scholarship Department", "Examination Cell"})
+    conn = get_connection()
+    try:
+        req_row = conn.execute(
+            """SELECT w.*, COALESCE(s.name, w.student_id) AS student_name, s.course, s.semester, s.email, s.cgpa
+               FROM withdrawal_requests w
+               LEFT JOIN students s ON w.student_id = s.id
+               WHERE w.id = ?""",
+            (req_id,)
+        ).fetchone()
+        if not req_row:
+            raise HTTPException(status_code=404, detail="Withdrawal request not found.")
+
+        req_data = dict(req_row)
+        student_id = req_data["student_id"]
+        reference_no = req_data.get("reference_no") or f"AMITY-WTH-2026-{req_id}"
+
+        # Uploaded documents
+        doc_rows = conn.execute(
+            "SELECT * FROM documents WHERE student_id = ? ORDER BY timestamp DESC",
+            (student_id,)
+        ).fetchall()
+        docs = [_document_row_to_dict(d) for d in doc_rows]
+
+        # Checklist items
+        checklist_rows = conn.execute(
+            "SELECT * FROM withdrawal_checklist_items WHERE request_id = ? ORDER BY id ASC",
+            (req_id,)
+        ).fetchall()
+        checklist = [dict(c) for c in checklist_rows]
+
+        # Clearance gates
+        gate_rows = conn.execute(
+            "SELECT * FROM clearance_gates WHERE reference_no = ? ORDER BY sequence_order ASC",
+            (reference_no,)
+        ).fetchall()
+        gates = [dict(g) for g in gate_rows]
+
+        # Workflow events / timeline messages
+        event_rows = conn.execute(
+            "SELECT * FROM workflow_events WHERE request_id = ? ORDER BY timestamp ASC, id ASC",
+            (req_id,)
+        ).fetchall()
+        events = [dict(e) for e in event_rows]
+
+        return {
+            "request": req_data,
+            "documents": docs,
+            "checklist": checklist,
+            "gates": gates,
+            "events": events,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch review details: {e}")
+
+
+@router.post("/requests/{req_id}/review-document")
+async def review_withdrawal_document(req_id: int, body: DocumentReviewAction, request: Request = None):
+    """Accept or reject an uploaded document and log audit event."""
+    require_any_role(request, {"Registrar", "Administrator", "Department Coordinator", "Finance Department", "Scholarship Department", "Examination Cell"})
+    conn = get_connection()
+    try:
+        req_row = conn.execute("SELECT student_id, reference_no FROM withdrawal_requests WHERE id = ?", (req_id,)).fetchone()
+        if not req_row:
+            raise HTTPException(status_code=404, detail="Request not found.")
+
+        doc_row = conn.execute("SELECT id, file_name, classification FROM documents WHERE id = ?", (body.document_id,)).fetchone()
+        if not doc_row:
+            raise HTTPException(status_code=404, detail="Document not found.")
+
+        conn.execute(
+            "UPDATE documents SET verification_status = ?, verification_notes = ? WHERE id = ?",
+            (body.status, body.notes, body.document_id)
+        )
+
+        # Update checklist item if matching
+        doc_type = doc_row["classification"] or doc_row["file_name"] or ""
+        conn.execute(
+            "UPDATE withdrawal_checklist_items SET status = ? WHERE request_id = ? AND (document_key LIKE ? OR label LIKE ?)",
+            (
+                "completed" if body.status == "verified" else "rejected",
+                req_id,
+                f"%{doc_type}%",
+                f"%{doc_type}%",
+            )
+        )
+
+        # Log workflow event
+        status_label = "VERIFIED & ACCEPTED" if body.status == "verified" else "REJECTED (Resubmission Needed)"
+        notes_text = f" Notes: {body.notes}" if body.notes else ""
+        conn.execute(
+            """INSERT INTO workflow_events (request_id, status, title, description, actor)
+               VALUES (?, ?, ?, ?, 'Staff (Registrar Verification Desk)')""",
+            (
+                req_id,
+                "document_reviewed",
+                f"Document {status_label}",
+                f"Document '{doc_type}' marked as {body.status}.{notes_text}",
+            )
+        )
+        conn.commit()
+
+        return {"success": True, "document_id": body.document_id, "status": body.status}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to review document: {e}")
+
+
+@router.post("/requests/{req_id}/checklist/verify-all")
+async def verify_all_checklist_items(req_id: int, request: Request):
+    """Mark all checklist items in a withdrawal request as completed."""
+    require_any_role(request, {"Registrar", "Administrator", "Department Coordinator", "Finance Department", "Scholarship Department", "Examination Cell"})
+    conn = get_connection()
+    try:
+        conn.execute("UPDATE withdrawal_checklist_items SET status = 'verified', updated_at = CURRENT_TIMESTAMP WHERE request_id = ?", (req_id,))
+        conn.execute(
+            """INSERT INTO workflow_events (request_id, status, title, description, actor)
+               VALUES (?, 'checklist_verified', 'All Dossier Checklist Items Verified', 'Staff completed review and marked all checklist items verified.', 'Staff (Registrar Verification Desk)')""",
+            (req_id,),
+        )
+        conn.commit()
+        return {"success": True, "message": "All checklist items verified."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to verify all checklist items: {e}")
+
+
+@router.post("/requests/{req_id}/checklist/{item_id}")
+async def update_request_checklist_item(req_id: int, item_id: int, body: ChecklistItemUpdate, request: Request):
+    """Toggle or update status of a clearance checklist item."""
+    require_any_role(request, {"Registrar", "Administrator", "Department Coordinator", "Finance Department", "Scholarship Department", "Examination Cell"})
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT id, label, document_key FROM withdrawal_checklist_items WHERE id = ? AND request_id = ?", (item_id, req_id)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Checklist item not found.")
+        raw_status = body.status.lower().strip()
+        db_status = "verified" if raw_status in ("completed", "verified") else "pending"
+        conn.execute("UPDATE withdrawal_checklist_items SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (db_status, item_id))
+        
+        label = row["label"] or row["document_key"] or f"Item #{item_id}"
+        event_status = "checklist_verified" if db_status == "verified" else "checklist_pending"
+        title = f"Checklist: {label}"
+        desc = f"Staff verified and marked '{label}' as {db_status.upper()}."
+        conn.execute(
+            """INSERT INTO workflow_events (request_id, status, title, description, actor)
+               VALUES (?, ?, ?, ?, 'Staff (Registrar Verification Desk)')""",
+            (req_id, event_status, title, desc),
+        )
+        conn.commit()
+        return {"success": True, "item_id": item_id, "status": db_status}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update checklist item: {e}")
+
+
+@router.post("/requests/{req_id}/send-message")
+async def send_request_status_message(req_id: int, body: RequestReviewMessage, request: Request = None):
+    """Send an official status message from staff to the student's request status feed."""
+    require_any_role(request, {"Registrar", "Administrator", "Department Coordinator", "Finance Department", "Scholarship Department", "Examination Cell"})
+    conn = get_connection()
+    try:
+        req_row = conn.execute("SELECT student_id, status, reference_no FROM withdrawal_requests WHERE id = ?", (req_id,)).fetchone()
+        if not req_row:
+            raise HTTPException(status_code=404, detail="Request not found.")
+
+        current_status = req_row["status"]
+        new_status = body.status if body.status else current_status
+
+        if body.status and body.status != current_status:
+            conn.execute(
+                "UPDATE withdrawal_requests SET status = ? WHERE id = ?",
+                (body.status, req_id)
+            )
+
+        conn.execute(
+            """INSERT INTO workflow_events (request_id, status, title, description, actor)
+               VALUES (?, ?, 'Official Staff Update', ?, ?)""",
+            (
+                req_id,
+                new_status,
+                body.message,
+                body.actor or "Staff (Registrar Desk)",
+            )
+        )
+        conn.commit()
+
+        return {"success": True, "message": "Status update and message dispatched to student."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to dispatch status message: {e}")
 
 # ── Withdrawal Requests Management ──────────────────────────────────────────────
 @router.get("/requests")
@@ -279,9 +497,133 @@ async def verify_audited_document(doc_id: int, body: DocumentVerification, reque
     return {"message": f"Document {doc_id} marked as {body.status}.", "notes": body.notes}
 
 
+def _format_time_ago(ts_str: str) -> str:
+    """Format an ISO or SQL timestamp into a friendly time string."""
+    if not ts_str:
+        return "Recently"
+    try:
+        from datetime import datetime
+        cleaned = ts_str.replace("Z", "+00:00").replace("T", " ")
+        if "." in cleaned:
+            cleaned = cleaned.split(".")[0]
+        try:
+            dt = datetime.fromisoformat(cleaned)
+        except Exception:
+            dt = datetime.strptime(cleaned, "%Y-%m-%d %H:%M:%S")
+        
+        now = datetime.now()
+        diff = (now - dt).total_seconds()
+        if diff < 60:
+            return "Just now"
+        if diff < 3600:
+            return f"{max(1, int(diff // 60))}m ago"
+        if diff < 86400:
+            return f"{max(1, int(diff // 3600))}h ago"
+        days = int(diff // 86400)
+        if days == 1:
+            return "Yesterday"
+        if days < 7:
+            return f"{days}d ago"
+        return dt.strftime("%d %b")
+    except Exception:
+        return "Recently"
+
+
+def _get_genuine_recent_activities(conn, limit: int = 10):
+    activities = []
+
+    # 1. Digital Notesheets
+    try:
+        rows = conn.execute(
+            """SELECT reference_no, title, category, status, current_stage, 
+                      COALESCE(updated_at, created_at) as ts
+               FROM notesheets 
+               ORDER BY ts DESC LIMIT 8"""
+        ).fetchall()
+        for r in rows:
+            cat = (r["category"] or "General").upper()
+            dept = "Proctor Cell" if "DISC" in cat else ("Academic Desk" if "ACAD" in cat else "Dean Office")
+            activities.append({
+                "action": f"Digital Notesheet #{r['reference_no']} marked {r['status']}",
+                "dept": dept,
+                "time": _format_time_ago(r["ts"]),
+                "raw_ts": r["ts"] or "",
+                "type": "notesheet",
+                "status": r["status"]
+            })
+    except Exception:
+        pass
+
+    # 2. Caution Deposit Offsets
+    try:
+        rows = conn.execute(
+            """SELECT reference_no, department, amount, reason, created_at as ts
+               FROM caution_deposit_offsets
+               ORDER BY ts DESC LIMIT 8"""
+        ).fetchall()
+        for r in rows:
+            dept = f"{r['department'].title()} Desk" if r["department"] else "Finance Section"
+            activities.append({
+                "action": f"Smart Caution Deposit Offset ₹{int(r['amount'])} for {r['reason']}",
+                "dept": dept,
+                "time": _format_time_ago(r["ts"]),
+                "raw_ts": r["ts"] or "",
+                "type": "offset",
+                "status": "PROCESSED"
+            })
+    except Exception:
+        pass
+
+    # 3. Withdrawal Requests
+    try:
+        rows = conn.execute(
+            """SELECT reference_no, student_id, status, reason, timestamp as ts
+               FROM withdrawal_requests
+               ORDER BY ts DESC LIMIT 8"""
+        ).fetchall()
+        for r in rows:
+            st = (r["status"] or "PENDING").upper()
+            ref = r["reference_no"] or f"WTH-{r['student_id']}"
+            activities.append({
+                "action": f"Withdrawal #{ref} ({st}) for {r['student_id']}",
+                "dept": "Registrar Office",
+                "time": _format_time_ago(r["ts"]),
+                "raw_ts": r["ts"] or "",
+                "type": "withdrawal",
+                "status": st
+            })
+    except Exception:
+        pass
+
+    # 4. Grievances
+    try:
+        rows = conn.execute(
+            """SELECT id, student_id, category, status, timestamp as ts
+               FROM grievances
+               ORDER BY ts DESC LIMIT 8"""
+        ).fetchall()
+        for r in rows:
+            st = (r["status"] or "OPEN").upper()
+            cat = (r["category"] or "General").capitalize()
+            activities.append({
+                "action": f"Grievance #GRV-{r['id']} ({cat}) {st} for {r['student_id']}",
+                "dept": "Grievance Cell",
+                "time": _format_time_ago(r["ts"]),
+                "raw_ts": r["ts"] or "",
+                "type": "grievance",
+                "status": st
+            })
+    except Exception:
+        pass
+
+    # Sort all by raw_ts descending
+    activities.sort(key=lambda x: str(x.get("raw_ts", "")), reverse=True)
+    return activities[:limit]
+
+
 @router.get("/stats")
 async def get_admin_stats(request: Request):
-    """Get overall admin dashboard statistics."""
+    """Get overall admin dashboard statistics with genuine recent activity stream."""
     require_any_role(request, {"Registrar", "Administrator", "Department Coordinator", "Finance Department", "Scholarship Department", "Examination Cell"})
     conn = get_connection()
     
@@ -290,11 +632,22 @@ async def get_admin_stats(request: Request):
     open_grievances = conn.execute("SELECT COUNT(*) as count FROM grievances WHERE status = 'open'").fetchone()["count"]
     documents_pending_verification = conn.execute("SELECT COUNT(*) as count FROM documents WHERE verification_status = 'pending'").fetchone()["count"]
     fraud_flagged_docs = conn.execute("SELECT COUNT(*) as count FROM documents WHERE verification_status = 'fraud_detected'").fetchone()["count"]
+    recent_activity = _get_genuine_recent_activities(conn, limit=10)
     
     return {
         "total_students": total_students,
         "pending_withdrawals": pending_withdrawals,
         "open_grievances": open_grievances,
         "documents_pending_verification": documents_pending_verification,
-        "fraud_flagged_documents": fraud_flagged_docs
+        "fraud_flagged_documents": fraud_flagged_docs,
+        "recent_activity": recent_activity,
     }
+
+
+@router.get("/recent-activity")
+async def get_recent_activity(request: Request):
+    """Get genuine real-time activity stream from verified university database records."""
+    require_any_role(request, {"Registrar", "Administrator", "Department Coordinator", "Finance Department", "Scholarship Department", "Examination Cell"})
+    conn = get_connection()
+    return {"activities": _get_genuine_recent_activities(conn, limit=20)}
+

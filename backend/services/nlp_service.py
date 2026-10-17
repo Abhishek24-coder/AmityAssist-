@@ -29,6 +29,7 @@ RouterIntent = Literal[
     "hostel",
     "documents",
     "internships",
+    "request_status",
     "help",
     "unknown",
 ]
@@ -121,6 +122,13 @@ _ROUTER_KEYWORDS: dict[str, list[str]] = {
         "internship", "internships", "placement", "placements", "campus drive",
         "job drive", "company", "stipend", "eligible internship",
     ],
+    "request_status": [
+        "request status", "status of withdrawal", "withdrawal status", "kahan tak pahuncha",
+        "kahan tak pahucha", "mera status", "track request", "track withdrawal",
+        "clearance status", "status kya hai", "application status", "check status",
+        "withdrawal process", "where has it reached", "status of my request", "stage",
+        "track", "status", "pahuncha", "pahucha",
+    ],
     "withdrawals": [
         "withdraw", "withdrawal", "leave university", "drop out", "dropout",
         "refund", "cancel admission", "quit", "programme chhod", "college chhod",
@@ -129,12 +137,13 @@ _ROUTER_KEYWORDS: dict[str, list[str]] = {
         "help", "support", "menu", "options", "what can you do", "assist",
         "madad", "sahayata",
     ],
+    
 }
 
 
 def _tokenize(text: str) -> list[str]:
     """Lower-case, strip punctuation, split into tokens."""
-    return re.sub(r"[^a-z\s]", " ", text.lower()).split()
+    return re.sub(r"[^\w\s]", " ", text.lower(), flags=re.UNICODE).split()
 
 
 def classify_intent(text: str) -> Intent:
@@ -167,12 +176,23 @@ def route_intent(text: str) -> RouterIntent:
     lower_text = text.lower()
     tokens = set(_tokenize(text))
 
+    # Priority disambiguation: if tracking signals are present alongside withdrawal keywords
+    status_signals = {
+        "status", "track", "tracking", "pahuncha", "pahucha", "kahan", "stage",
+        "progress", "where", "reached", "check", "कहाँ", "कहा", "स्थिति", "स्टेटस",
+        "अपडेट", "पहुँचा", "पहुंचा"
+    }
+    withdrawal_signals = {"withdraw", "withdrawal", "विथड्रॉल", "वापसी"}
+    if any(s in lower_text or s in tokens for s in status_signals):
+        if any(w in lower_text or w in tokens for w in withdrawal_signals):
+            return "request_status"
+
     scores: dict[str, int] = {}
     for intent, keywords in _ROUTER_KEYWORDS.items():
         score = 0
         for kw in keywords:
             if kw in tokens or kw in lower_text:
-                score += 1
+                score += len(kw.split())
         scores[intent] = score
 
     best = max(scores, key=lambda k: scores[k])

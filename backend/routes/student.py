@@ -234,6 +234,24 @@ async def file_grievance(body: GrievanceCreate):
     if body.category not in allowed:
         raise HTTPException(status_code=400, detail=f"Category must be one of: {', '.join(allowed)}")
     conn = get_connection()
+    # Check for recent duplicate submission from the same student to prevent duplicate submissions (F07)
+    recent = conn.execute(
+        """
+        SELECT id, timestamp FROM grievances 
+        WHERE student_id = ? AND category = ? AND description = ? AND status = 'open'
+        ORDER BY timestamp DESC LIMIT 1
+        """,
+        (body.student_id, body.category, body.description)
+    ).fetchone()
+    if recent:
+        existing_id = recent["id"]
+        year = datetime.now(timezone.utc).year
+        ticket_id = f"GRV-{year}-{existing_id:04d}"
+        raise HTTPException(
+            status_code=409,
+            detail=f"Duplicate submission prevented. An identical grievance is already registered as Ticket {ticket_id}."
+        )
+
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO grievances (student_id, category, description) VALUES (?, ?, ?)",

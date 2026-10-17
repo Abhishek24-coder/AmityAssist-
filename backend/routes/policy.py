@@ -7,7 +7,7 @@ hybrid RAG advice generation.
 from __future__ import annotations
 
 from typing import Any, Optional
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..services.policy_search_service import PolicySearchService, DEFAULT_POLICIES
@@ -40,11 +40,23 @@ async def search_policies(
 
 
 @router.post("/guide")
-async def get_policy_guidance(body: PolicyGuideRequest) -> dict[str, Any]:
+async def get_policy_guidance(body: PolicyGuideRequest, request: Request) -> dict[str, Any]:
     """Hybrid RAG endpoint: combines student profile with FTS5 policy clauses for zero-hallucination guidance."""
+    effective_sid = body.student_id
+    if not effective_sid:
+        auth_hdr = request.headers.get("Authorization", "")
+        if auth_hdr.startswith("Bearer "):
+            token = auth_hdr.split(" ", 1)[1].strip()
+            try:
+                from ..security.jwt import decode_access_token
+                payload = decode_access_token(token)
+                effective_sid = payload.get("sub")
+            except Exception:
+                pass
+
     guidance = PolicySearchService.hybrid_guidance(
         query=body.query,
-        student_id=body.student_id,
+        student_id=effective_sid,
         page_context=body.page_context,
         language=body.language,
         history=body.conversation_history,
@@ -78,11 +90,62 @@ async def get_llm_status() -> dict[str, Any]:
     }
 
 
+@router.get("/admin/list")
+async def list_admin_policies() -> dict[str, Any]:
+    """List all university policies with customization flags and last updated timestamps."""
+    policies = PolicySearchService.list_policies()
+    return {
+        "status": "success",
+        "count": len(policies),
+        "policies": policies,
+    }
+
+
+class PolicyUpsertRequest(BaseModel):
+    doc_id: str = Field(..., min_length=2, max_length=50)
+    category: str = Field(..., min_length=2, max_length=50)
+    title: str = Field(..., min_length=3, max_length=200)
+    clause_code: str = Field(..., min_length=2, max_length=50)
+    content: str = Field(..., min_length=10, max_length=2000)
+    action_url: Optional[str] = "/forms"
+    action_label: Optional[str] = "View Policy"
+
+
+@router.post("/admin/save")
+async def save_policy(payload: PolicyUpsertRequest) -> dict[str, Any]:
+    """Create or update a university policy ordinance with real-time FTS5 sync."""
+    saved = PolicySearchService.upsert_policy(
+        doc_id=payload.doc_id,
+        category=payload.category,
+        title=payload.title,
+        clause_code=payload.clause_code,
+        content=payload.content,
+        action_url=payload.action_url or "/forms",
+        action_label=payload.action_label or "View Policy",
+        is_custom=True,
+    )
+    return {
+        "status": "success",
+        "message": f"Policy '{payload.doc_id}' saved and indexed into FTS5 successfully.",
+        "policy": saved,
+    }
+
+
+@router.delete("/admin/{doc_id}")
+async def delete_or_reset_policy(doc_id: str) -> dict[str, Any]:
+    """Delete a custom policy or reset a default policy to original seed."""
+    result = PolicySearchService.delete_policy(doc_id)
+    return result
+
+
 @router.get("/{clause_code}")
 async def get_policy_by_clause(clause_code: str) -> dict[str, Any]:
     """Retrieve an exact official university ordinance by its clause code."""
     clause_clean = clause_code.strip().upper()
-    policy = next((p for p in DEFAULT_POLICIES if p["clause_code"].upper() == clause_clean), None)
+    all_policies = PolicySearchService.list_policies()
+    policy = next((p for p in all_policies if p["clause_code"].upper() == clause_clean), None)
+    if not policy:
+        policy = next((p for p in DEFAULT_POLICIES if p["clause_code"].upper() == clause_clean), None)
     if not policy:
         raise HTTPException(status_code=404, detail=f"Ordinance clause '{clause_code}' not found.")
     return policy

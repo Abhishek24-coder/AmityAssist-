@@ -431,6 +431,17 @@ def _is_lifecycle_query(raw_message: str, voice: bool) -> bool:
         "apply",
         "room",
         "dues",
+        "track",
+        "pahuncha",
+        "pahucha",
+        "kahan",
+        "stage",
+        "स्टेटस",
+        "पहुंचा",
+        "कहाँ",
+        "स्थिति",
+        "अपडेट",
+        "विथड्रॉल",
     )
     return voice or any(marker in lower for marker in command_markers)
 
@@ -656,6 +667,60 @@ def _route_lifecycle_message(
             reply=reply, state="ROUTED", intent=routed_intent, sentiment=sentiment
         )
 
+    if routed_intent == "request_status":
+        from .withdrawal_workflow import get_latest_withdrawal_status
+        w_status = get_latest_withdrawal_status(student_id)
+        if not w_status.get("has_request"):
+            if language == "hi":
+                reply = f"{prefix}Aapke account par abhi koi active withdrawal request nahi hai. Aap Procedures tab se Withdrawal initiate kar sakte hain."
+            elif language == "hinglish":
+                reply = f"{prefix}Aapka koi active withdrawal request abhi exist nahi karta. Aap Procedures tab se request shuru kar sakte hain."
+            else:
+                reply = f"{prefix}You do not have any active withdrawal request on file. You can initiate one under the Procedures tab."
+        else:
+            req = w_status["request"]
+            gates = w_status.get("gates", [])
+            cleared_gates = [g["department"] for g in gates if g.get("status") == "CLEARED"]
+            pending_gates = [g["department"] for g in gates if g.get("status") != "CLEARED"]
+            status_text = (req.get("status") or "pending").upper()
+            ref = req.get("reference_no", "N/A")
+
+            events = w_status.get("events", [])
+            staff_msgs = [e for e in events if e.get("actor") in ("staff", "admin", "officer")]
+            latest_note = staff_msgs[-1]["description"] if staff_msgs else "Clearance desks are actively processing your request."
+
+            if language in ("hi", "hindi"):
+                cleared_str = ', '.join(cleared_gates) if cleared_gates else 'Koyi nahi'
+                pending_str = ', '.join(pending_gates) if pending_gates else 'Sabhi clear'
+                reply = (
+                    f"{prefix}Aapki withdrawal request (Ref: {ref}) vartaman me {status_text} hai. "
+                    f"Cleared Desks: {cleared_str}. "
+                    f"Pending Clearance: {pending_str}. "
+                    f"Staff Update: {latest_note}"
+                )
+            elif language == "hinglish":
+                cleared_str = ', '.join(cleared_gates) if cleared_gates else 'None yet'
+                pending_str = ', '.join(pending_gates) if pending_gates else 'All cleared'
+                reply = (
+                    f"{prefix}Aapki withdrawal application (Ref: {ref}) abhi {status_text} stage par hai. "
+                    f"Approved desks: {cleared_str}. "
+                    f"Pending clearance: {pending_str}. "
+                    f"Office Note: {latest_note}"
+                )
+            else:
+                cleared_str = ', '.join(cleared_gates) if cleared_gates else 'None yet'
+                pending_str = ', '.join(pending_gates) if pending_gates else 'All cleared'
+                reply = (
+                    f"{prefix}Your withdrawal application ({ref}) is currently in {status_text} stage. "
+                    f"Cleared desks: {cleared_str}. "
+                    f"Pending gates: {pending_str}. "
+                    f"Latest Staff Update: {latest_note}"
+                )
+        _log_message(student_id, reply, "bot", routed_intent, sentiment)
+        return ChatResponse(
+            reply=reply, state="ROUTED", intent=routed_intent, sentiment=sentiment
+        )
+
     if routed_intent == "grievances":
         session["state"] = "GRIEVANCE_CATEGORY"
         reply = (
@@ -855,6 +920,12 @@ def process_message(session_id: str, raw_message: str) -> ChatResponse:
     if state == "BACKPAPER_CONFIRM":
         return _handle_backpaper_state(session, raw_message)
 
+    routed_response = _route_lifecycle_message(
+        session, raw_message, language, voice
+    )
+    if routed_response is not None:
+        return routed_response
+
     if state == "ASK_REASON" and _is_greeting(raw_message):
         reply = (
             "Hello! I am here to help with your student activities. "
@@ -866,20 +937,8 @@ def process_message(session_id: str, raw_message: str) -> ChatResponse:
             reply=reply, state="ASK_REASON", intent="help", sentiment="positive"
         )
 
-    if state == "SUGGEST":
-        routed_response = _route_lifecycle_message(
-            session, raw_message, language, voice
-        )
-        if routed_response is not None:
-            return routed_response
-
     # ── State: ASK_REASON ────────────────────────────────────────────────────
     if state == "ASK_REASON":
-        routed_response = _route_lifecycle_message(
-            session, raw_message, language, voice
-        )
-        if routed_response is not None:
-            return routed_response
 
         intent = classify_intent(raw_message)
         routed_intent = route_intent(raw_message)

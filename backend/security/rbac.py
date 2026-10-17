@@ -93,7 +93,10 @@ def require_permission(request: Request, permission: str) -> dict[str, Any] | No
 def require_student_access(request: Request, student_id: str) -> dict[str, Any] | None:
     user = get_current_user(request)
     if user is None:
-        return None
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication is required to access student data.",
+        )
 
     if user.get("role") != "Student":
         raise HTTPException(

@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field
 
+from ..database.connection import get_connection
 from ..models.schemas import DepartmentClearActionRequest, OffsetDepositRequest, DepositLedgerResponse
 from ..services.token_pdf_service import generate_token_slip_pdf
 from ..services.withdrawal_workflow import (
@@ -47,7 +48,37 @@ async def withdrawal_status(student_id: str):
 @router.post("/apply")
 async def apply_withdrawal(req: WithdrawalApplyRequest):
     """Submit an official withdrawal application, initializing 4 sequential clearance gates and voucher."""
-    reference_no = create_withdrawal_request(req.student_id, req.reason, req.intent or "withdrawal_official")
+    s_id = req.student_id.upper().strip()
+    if not s_id or s_id in ("GUEST", "ANONYMOUS", "STAFF"):
+        raise HTTPException(
+            status_code=401,
+            detail="Official university withdrawal requires verified student login.",
+        )
+
+    conn = get_connection()
+    student = conn.execute("SELECT id, name FROM students WHERE UPPER(id) = ?", (s_id,)).fetchone()
+    if not student:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Student record '{req.student_id}' not found. Please log in with verified student credentials.",
+        )
+
+    # Strictly enforce: Only one active withdrawal request at a time
+    active_row = conn.execute(
+        """SELECT id, reference_no, status, timestamp
+           FROM withdrawal_requests
+           WHERE UPPER(student_id) = ? AND LOWER(status) NOT IN ('completed', 'rejected', 'cancelled')
+           ORDER BY timestamp DESC
+           LIMIT 1""",
+        (s_id,),
+    ).fetchone()
+    if active_row:
+        raise HTTPException(
+            status_code=400,
+            detail=f"An active withdrawal request ({active_row['reference_no']}) is already in progress for this student. Only one withdrawal application is permitted at a time.",
+        )
+
+    reference_no = create_withdrawal_request(s_id, req.reason, req.intent or "withdrawal_official")
     voucher = get_clearance_voucher(reference_no)
     return {
         "success": True,

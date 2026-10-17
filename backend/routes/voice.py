@@ -7,7 +7,7 @@ parameters for the UniAssist kiosk and web frontend.
 from __future__ import annotations
 
 from typing import Any, Optional
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from ..services.policy_search_service import PolicySearchService
@@ -25,11 +25,23 @@ class VoiceQueryRequest(BaseModel):
 
 
 @router.post("/query")
-async def process_voice_query(body: VoiceQueryRequest) -> dict[str, Any]:
+async def process_voice_query(body: VoiceQueryRequest, request: Request) -> dict[str, Any]:
     """Process a voice-command inquiry and return voice-optimized speech response and action shortcuts."""
+    effective_sid = body.student_id
+    if not effective_sid:
+        auth_hdr = request.headers.get("Authorization", "")
+        if auth_hdr.startswith("Bearer "):
+            token = auth_hdr.split(" ", 1)[1].strip()
+            try:
+                from ..security.jwt import decode_access_token
+                payload = decode_access_token(token)
+                effective_sid = payload.get("sub")
+            except Exception:
+                pass
+
     guidance = PolicySearchService.hybrid_guidance(
         query=body.spoken_text,
-        student_id=body.student_id,
+        student_id=effective_sid,
         page_context=body.page_context,
         language=body.language,
         history=body.conversation_history,
@@ -45,6 +57,10 @@ async def process_voice_query(body: VoiceQueryRequest) -> dict[str, Any]:
         clean_speech = clean_speech.replace("₹", "Rupees ").replace("INR ", "Rupees ").replace("ORD-", "Ordinance ")
 
     return {
+        "status": guidance.get("status"),
+        "is_ambiguous": guidance.get("is_ambiguous", False),
+        "clarification_options": guidance.get("clarification_options", []),
+        "domain": guidance.get("domain"),
         "transcription": body.spoken_text,
         "response_text": guidance["answer"],
         "speech_text": clean_speech,

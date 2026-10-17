@@ -27,12 +27,21 @@ def _safe_content(citation: dict[str, Any]) -> str:
     return content[:500]
 
 
-def clean_text_for_speech(text: str) -> str:
-    """Strip markdown headers, bold asterisks, and code formatting for speech friendliness."""
+def strip_markdown_stars(text: str) -> str:
+    """Remove markdown bold asterisks and stray asterisks while preserving line breaks and structure."""
     if not text:
         return ""
     cleaned = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
     cleaned = re.sub(r"\*([^*]+)\*", r"\1", cleaned)
+    cleaned = re.sub(r"\*", "", cleaned)
+    return cleaned
+
+
+def clean_text_for_speech(text: str) -> str:
+    """Strip markdown headers, bold asterisks, and code formatting for speech friendliness."""
+    if not text:
+        return ""
+    cleaned = strip_markdown_stars(text)
     cleaned = re.sub(r"#{1,6}\s*", "", cleaned)
     cleaned = re.sub(r"`([^`]+)`", r"\1", cleaned)
     cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", cleaned)
@@ -131,6 +140,10 @@ def ensure_ollama_daemon_running() -> bool:
     status = check_ollama_status()
     if status.get("online"):
         return True
+
+    # Only attempt to auto-launch if explicitly enabled to prevent llama-server.exe crash dialogs on Windows
+    if os.getenv("OLLAMA_AUTOSPAWN", "false").lower() not in ("true", "1", "yes"):
+        return False
 
     ollama_path = shutil.which("ollama")
     if not ollama_path:
@@ -265,6 +278,34 @@ def generate_local_policy_answer(
                 f"- Verified Submission Office: {matched_procedure.get('submission_office', 'UniAssist Portal / Department Desk')}\n"
                 f"- Turnaround SLA: {matched_procedure.get('deadline_sla', 'Standard campus SLA')}\n"
             )
+
+        # Dynamically inject live configured workflow steps and custom procedures into grounding
+        try:
+            from .procedure_service import ProcedureService
+            q_lower_check = query.lower()
+            if any(w in q_lower_check for w in ["withdrawal", "refund", "विड्रॉल", "रिफंड"]):
+                live_wth_steps = ProcedureService.get_steps("withdrawal")
+                if live_wth_steps:
+                    steps_summary = "; ".join([f"Step {s['step_number']}: {s['title']} ({s['department']})" for s in live_wth_steps])
+                    facts_text += f"\n- Live Clearance Workflow Steps ({len(live_wth_steps)} stages): {steps_summary}"
+
+            active_procs = ProcedureService.list_procedures(active_only=True)
+            for ap in active_procs:
+                p_title = (ap.get("title") or "").lower()
+                if p_title and (p_title in q_lower_check or any(w in q_lower_check for w in p_title.split() if len(w) >= 4)):
+                    step_list = ap.get("steps") or []
+                    s_desc = "; ".join([f"Step {s.get('step_number', idx+1)}: {s.get('title')} ({s.get('responsible_desk', 'Desk')})" for idx, s in enumerate(step_list)]) if step_list else "Standard administrative review"
+                    docs_desc = ", ".join(ap.get("required_docs") or ["None"])
+                    facts_text += (
+                        f"\nOFFICIAL CONFIGURED PROCEDURE ({ap.get('title')}):\n"
+                        f"- Department: {ap.get('department', 'University Desk')}\n"
+                        f"- Total Steps ({len(step_list)}): {s_desc}\n"
+                        f"- SLA: {ap.get('sla_days', 3)} working days\n"
+                        f"- Required Documents: {docs_desc}\n"
+                    )
+                    break
+        except Exception:
+            pass
 
         lang_instruction = "Respond in warm, professional, and concise Indian English for text-to-speech."
         if language == "hi-IN":

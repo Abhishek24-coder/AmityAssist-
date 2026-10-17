@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from ..services.notesheet_service import NotesheetService, STAGE_HIERARCHY
 from ..services.notesheet_docx_service import generate_notesheet_docx
+from ..services.notesheet_pdf_service import generate_notesheet_pdf
 
 router = APIRouter(prefix="/api/notesheets", tags=["Digital Notesheet"])
 
@@ -143,5 +144,24 @@ async def download_notesheet_docx(id_or_ref: str):
     return Response(
         content=docx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/{id_or_ref}/pdf", summary="Download Notesheet as PDF")
+async def download_notesheet_pdf(id_or_ref: str):
+    """Generate and download the notesheet as a high-fidelity vector PDF."""
+    try:
+        ns = NotesheetService.get_notesheet(id_or_ref)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    pdf_bytes = generate_notesheet_pdf(ns)
+    ref = ns.get("reference_no", id_or_ref)
+    filename = f"Notesheet_{ref}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
