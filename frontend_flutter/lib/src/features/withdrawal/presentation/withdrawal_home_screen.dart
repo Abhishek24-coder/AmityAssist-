@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:flutter_animate/flutter_animate.dart';
+import '../../../core/api_client.dart';
 import '../../../core/theme/kiosk_theme.dart';
 import '../../../core/utils/download_service.dart';
 import '../../../core/services/page_context_service.dart';
@@ -12,18 +13,18 @@ import 'withdrawal_providers.dart';
 class WithdrawalHomeScreen extends ConsumerWidget {
   const WithdrawalHomeScreen({super.key});
 
-  void _handleInitiate(BuildContext context, WidgetRef ref) {
+  Future<void> _handleInitiate(BuildContext context, WidgetRef ref) async {
     final auth = ref.read(authProvider);
-    if (!auth.isAuthenticated) {
+    if (!auth.isAuthenticated || auth.studentId == null || auth.isStaff) {
       showDialog(
         context: context,
         builder: (dialogCtx) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Row(
+          title: const Row(
             children: [
-              const Icon(Icons.lock_person_rounded, color: AppColors.primary),
-              const SizedBox(width: 8),
-              const Text('Student Sign-In Required', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              Icon(Icons.lock_person_rounded, color: AppColors.primary),
+              SizedBox(width: 8),
+              Text('Student Sign-In Required', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ],
           ),
           content: const Text(
@@ -48,7 +49,67 @@ class WithdrawalHomeScreen extends ConsumerWidget {
       );
       return;
     }
-    context.push('/withdrawal/flow');
+
+    // Check if student already has an active withdrawal request (enforce strictly once at a time)
+    try {
+      final dio = ref.read(apiClientProvider);
+      final resp = await dio.get('/withdrawal/status/${auth.studentId}');
+      final data = resp.data as Map<String, dynamic>;
+      final hasRequest = data['has_request'] == true;
+      final request = data['request'] as Map<String, dynamic>?;
+      final status = (request?['status'] ?? '').toString().toLowerCase();
+      final isTerminal = status == 'completed' || status == 'rejected' || status == 'cancelled';
+
+      if (hasRequest && !isTerminal) {
+        final refNo = request?['reference_no'] ?? 'AMITY-WTH';
+        if (context.mounted) {
+          showDialog(
+            context: context,
+            builder: (dialogCtx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+                  SizedBox(width: 8),
+                  Text('Active Request In Progress', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('You already have an active withdrawal request ($refNo).'),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'University regulations permit only one active withdrawal application per student at a time. Please track your current clearance status or wait for final sign-off.',
+                    style: TextStyle(fontSize: 13, color: Colors.grey, height: 1.3),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogCtx),
+                  child: const Text('Close'),
+                ),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(dialogCtx);
+                    context.push('/request-status');
+                  },
+                  icon: const Icon(Icons.track_changes_rounded, size: 18),
+                  label: const Text('Track Current Request'),
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+    } catch (_) {}
+
+    if (context.mounted) {
+      context.push('/withdrawal/flow');
+    }
   }
 
   @override

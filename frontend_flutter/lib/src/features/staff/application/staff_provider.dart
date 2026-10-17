@@ -236,6 +236,75 @@ class StaffActions {
     _ref.invalidate(adminRequestsProvider);
     _ref.invalidate(adminStatsProvider);
   }
+
+  Future<Map<String, dynamic>> fetchRequestReviewDetails(int id) async {
+    try {
+      final response = await _dio.get('/admin/requests/$id/review-details');
+      return Map<String, dynamic>.from(response.data as Map);
+    } catch (e) {
+      return {};
+    }
+  }
+
+  Future<void> reviewRequestDocument({
+    required int reqId,
+    required int docId,
+    required String action,
+    String? notes,
+  }) async {
+    try {
+      await _dio.post('/admin/requests/$reqId/review-document', data: {
+        'document_id': docId,
+        'status': action,
+        'notes': notes,
+      });
+    } catch (_) {
+      await Future.delayed(const Duration(milliseconds: 400));
+    }
+    _ref.invalidate(adminRequestsProvider);
+    _ref.invalidate(adminDocumentsProvider);
+  }
+
+  Future<void> sendRequestStatusMessage({
+    required int reqId,
+    required String message,
+    String? status,
+  }) async {
+    try {
+      await _dio.post('/admin/requests/$reqId/send-message', data: {
+        'message': message,
+        'status': status,
+      });
+    } catch (_) {
+      await Future.delayed(const Duration(milliseconds: 400));
+    }
+    _ref.invalidate(adminRequestsProvider);
+    _ref.invalidate(adminStatsProvider);
+  }
+
+  Future<void> updateChecklistItem({
+    required int reqId,
+    required int itemId,
+    required String status,
+  }) async {
+    try {
+      await _dio.post('/admin/requests/$reqId/checklist/$itemId', data: {
+        'status': status.toLowerCase(),
+      });
+    } catch (_) {
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
+    _ref.invalidate(adminRequestsProvider);
+  }
+
+  Future<void> verifyAllChecklist({required int reqId}) async {
+    try {
+      await _dio.post('/admin/requests/$reqId/checklist/verify-all');
+    } catch (_) {
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
+    _ref.invalidate(adminRequestsProvider);
+  }
 }
 
 Map<String, dynamic> _normaliseWithdrawal(Map<String, dynamic> item) {

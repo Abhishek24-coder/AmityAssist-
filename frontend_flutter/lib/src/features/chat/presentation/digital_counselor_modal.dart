@@ -11,7 +11,9 @@ import '../../../core/theme/kiosk_theme.dart';
 import '../../../core/services/tts_service.dart';
 import '../../../core/services/stt_service.dart';
 import '../../../core/services/page_context_service.dart';
+import '../../../core/services/offline_cache_service.dart';
 import '../../auth/application/auth_provider.dart';
+import '../../../core/widgets/formatted_markdown_text.dart';
 import 'chat_screen.dart';
 
 /// Shows the AI Digital Counselor in a touch-first modal/dialog on kiosk or mobile.
@@ -305,14 +307,10 @@ class _DigitalCounselorModalState extends ConsumerState<DigitalCounselorModal> {
                                           borderRadius: BorderRadius.circular(10),
                                           border: Border.all(color: isUser ? AppColors.primary : AppColors.line),
                                         ),
-                                        child: Text(
-                                          message.text,
-                                          style: TextStyle(
-                                            color: isUser ? Colors.white : AppColors.ink,
-                                            fontSize: 14.5,
-                                            height: 1.4,
-                                            fontWeight: isUser ? FontWeight.w600 : FontWeight.w500,
-                                          ),
+                                        child: FormattedMarkdownText(
+                                          text: message.text,
+                                          isUser: isUser,
+                                          fontSize: 14.5,
                                         ),
                                       ),
                                     ),
@@ -474,6 +472,9 @@ class _VoiceChatTurn {
   final String? actionUrl;
   final String? screenInstruction;
   final List<dynamic> citations;
+  final String? status;
+  final bool isAmbiguous;
+  final List<dynamic> clarificationOptions;
   final DateTime timestamp;
 
   _VoiceChatTurn({
@@ -486,6 +487,9 @@ class _VoiceChatTurn {
     this.actionUrl,
     this.screenInstruction,
     this.citations = const [],
+    this.status,
+    this.isAmbiguous = false,
+    this.clarificationOptions = const [],
     DateTime? timestamp,
   }) : timestamp = timestamp ?? DateTime.now();
 }
@@ -632,10 +636,15 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
     try {
       final dio = ref.read(apiClientProvider);
       final auth = ref.read(authProvider);
-      final studentId = auth.isAuthenticated ? auth.studentId : null;
+      final prefs = ref.read(sharedPreferencesProvider);
+      final studentId = auth.studentId ?? prefs.getString('student_id');
       final pageContext = widget.currentRoute != null
           ? PageContextState.fromRoute(widget.currentRoute!)
           : ref.read(pageContextProvider);
+      final pageContextJson = pageContext.toJson();
+      if (studentId != null && studentId.isNotEmpty) {
+        pageContextJson['student_id'] = studentId;
+      }
 
       // Extract sliding window of recent conversation turns (max 6 turns before current query)
       final historyPayload = _conversationHistory
@@ -659,7 +668,7 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
             'spoken_text': cleanQ,
             'student_id': studentId,
             'language': _selectedLanguage,
-            'page_context': pageContext.toJson(),
+            'page_context': pageContextJson,
             'conversation_history': historyPayload,
           },
         );
@@ -670,7 +679,7 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
             'query': cleanQ,
             'student_id': studentId,
             'language': _selectedLanguage,
-            'page_context': pageContext.toJson(),
+            'page_context': pageContextJson,
             'conversation_history': historyPayload,
           },
         );
@@ -686,11 +695,16 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
         final actionUrl = data['action_url']?.toString();
         final screenInst = data['screen_instruction']?.toString();
         final citations = (data['citations'] is List) ? (data['citations'] as List) : const [];
+        final status = data['status']?.toString();
+        final isAmbiguous = data['is_ambiguous'] == true || status == 'trigger_cross_question';
+        final clarOptions = (data['clarification_options'] is List)
+            ? (data['clarification_options'] as List)
+            : const [];
 
         setState(() {
           _conversationHistory.add(_VoiceChatTurn(
             isUser: false,
-            text: answer,
+            text: (speak && speech.isNotEmpty) ? speech : answer,
             speechText: speech,
             engine: engine,
             domain: domain,
@@ -698,6 +712,9 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
             actionUrl: actionUrl,
             screenInstruction: screenInst,
             citations: citations,
+            status: status,
+            isAmbiguous: isAmbiguous,
+            clarificationOptions: clarOptions,
           ));
           _isLoading = false;
         });
@@ -1112,15 +1129,69 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
                             ],
                           ),
                           const SizedBox(height: 12),
-                          Text(
-                            turn.text,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              height: 1.48,
-                              color: AppColors.ink,
-                              fontWeight: FontWeight.w500,
-                            ),
+                          FormattedMarkdownText(
+                            text: turn.text,
+                            isUser: false,
+                            fontSize: 14,
+                            customTextColor: AppColors.ink,
                           ),
+                          // Interactive Disambiguation Chips (Cross-Question Options)
+                          if (turn.clarificationOptions.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF0FDF4),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFF86EFAC)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Row(
+                                    children: [
+                                      Icon(Icons.help_outline_rounded, size: 16, color: Color(0xFF15803D)),
+                                      SizedBox(width: 6),
+                                      Text(
+                                        'Please select your purpose to proceed:',
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF15803D),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: turn.clarificationOptions.map<Widget>((opt) {
+                                      final optMap = opt is Map ? opt : {'label': opt.toString(), 'value': opt.toString()};
+                                      final label = optMap['label']?.toString() ?? opt.toString();
+                                      final value = optMap['value']?.toString() ?? label;
+                                      return ActionChip(
+                                        backgroundColor: Colors.white,
+                                        side: const BorderSide(color: Color(0xFF16A34A), width: 1.2),
+                                        elevation: 1,
+                                        label: Text(
+                                          label,
+                                          style: const TextStyle(
+                                            color: Color(0xFF15803D),
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12.5,
+                                          ),
+                                        ),
+                                        onPressed: () {
+                                          _askPolicy(value, speak: true);
+                                        },
+                                      );
+                                    }).toList(),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                           // Screen Instruction if present
                           if (turn.screenInstruction != null) ...[
                             const SizedBox(height: 10),

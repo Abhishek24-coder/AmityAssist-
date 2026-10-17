@@ -155,9 +155,14 @@ class _StaffAccreditationScreenState extends ConsumerState<StaffAccreditationScr
                 const SizedBox(width: 8),
                 ElevatedButton.icon(
                   onPressed: () => _downloadExport('pdf'),
-                  icon: const Icon(Icons.picture_as_pdf_rounded, size: 18),
-                  label: const Text('PDF'),
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.amityBlue),
+                  icon: const Icon(Icons.picture_as_pdf_rounded, size: 18, color: Colors.white),
+                  label: const Text('PDF', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.amityBlue,
+                    foregroundColor: Colors.white,
+                    elevation: 1,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  ),
                 ),
               ],
             ),

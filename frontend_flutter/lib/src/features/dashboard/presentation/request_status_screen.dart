@@ -15,24 +15,50 @@ final workflowsProvider =
   if (studentId == null) return [];
 
   final dio = ref.watch(apiClientProvider);
+  final List<Map<String, dynamic>> results = [];
+
+  // 1. Prioritize canonical withdrawal status (holds live 4-gate clearance, events, voucher)
+  try {
+    final statusRes = await dio.get('/status/$studentId');
+    final data = statusRes.data is Map ? Map<String, dynamic>.from(statusRes.data as Map) : null;
+    if (data != null && data['has_request'] == true) {
+      results.add({
+        'procedure_type': 'WITHDRAWAL',
+        'type': 'WITHDRAWAL',
+        'workflow_id': data['reference_no'] ?? 'AMITY-WTH-2026',
+        'reference_no': data['reference_no'] ?? 'AMITY-WTH-2026',
+        'status': data['status'] ?? 'pending',
+        'reason': data['reason'] ?? 'Official Withdrawal Clearance',
+        'current_step': data['current_step'] ?? 'Clearance Verification',
+        'timestamp': data['timestamp'],
+        'checklist': data['checklist'] ?? [],
+        'events': data['events'] ?? [],
+        'gates': data['gates'] ?? [],
+        'voucher': data['voucher'],
+        'guide': data['guide'],
+        'is_canonical_withdrawal': true,
+      });
+    }
+  } catch (_) {}
+
+  // 2. Fetch other student workflows (grievances, scholarships, etc.)
   try {
     final response = await dio.get('/workflows', queryParameters: {
       'student_id': studentId,
     });
-    return (response.data as List? ?? [])
+    final list = (response.data as List? ?? [])
         .map((e) => Map<String, dynamic>.from(e as Map))
         .toList();
-  } catch (e) {
-    // Fallback: try the status endpoint
-    try {
-      final response = await dio.get('/status/$studentId');
-      final data = response.data as Map<String, dynamic>;
-      if (data['has_request'] == true) {
-        return [data];
+    for (final wf in list) {
+      final pType = (wf['procedure_type'] ?? wf['type'] ?? '').toString().toUpperCase();
+      if (pType == 'WITHDRAWAL' && results.any((r) => r['is_canonical_withdrawal'] == true)) {
+        continue;
       }
-    } catch (_) {}
-    return [];
-  }
+      results.add(wf);
+    }
+  } catch (_) {}
+
+  return results;
 });
 
 class RequestStatusScreen extends ConsumerWidget {
@@ -106,6 +132,7 @@ class _WorkflowCard extends StatelessWidget {
     final checklist = workflow['checklist'] as List? ?? [];
     final statusFlow = workflow['status_flow'] as List? ?? [];
     final gates = workflow['gates'] as List? ?? [];
+    final events = workflow['events'] as List? ?? [];
     final voucher = workflow['voucher'] is Map
         ? Map<String, dynamic>.from(workflow['voucher'] as Map)
         : null;
@@ -123,6 +150,13 @@ class _WorkflowCard extends StatelessWidget {
       'SCHOLARSHIP' => Icons.workspace_premium_rounded,
       _ => Icons.track_changes_rounded,
     };
+
+    final clearedGatesCount = gates.where((g) => (g['status'] ?? '').toString().toUpperCase() == 'CLEARED').length;
+    final totalGatesCount = gates.length;
+    final staffMessages = events.where((e) {
+      final actor = (e['actor'] ?? '').toString().toLowerCase();
+      return actor.contains('staff') || actor.contains('admin') || actor.contains('officer') || actor.contains('registrar');
+    }).toList();
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -185,7 +219,7 @@ class _WorkflowCard extends StatelessWidget {
                   const Icon(Icons.business_rounded, size: 16, color: Colors.grey),
                   const SizedBox(width: 6),
                   Text(
-                    'Current: $department',
+                    'Current Desk: $department',
                     style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
                   ),
                 ],
@@ -197,6 +231,143 @@ class _WorkflowCard extends StatelessWidget {
               Text(
                 'Reason: $reason',
                 style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
+              ),
+            ],
+
+            // Real-Time Progress Breakdown: Student Side vs University / Staff Side
+            const Divider(height: 24),
+            Row(
+              children: [
+                const Icon(Icons.sync_alt_rounded, size: 18, color: AppColors.amityBlue),
+                const SizedBox(width: 8),
+                Text(
+                  'Responsibility & Clearance Progress',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.successGreen.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.successGreen.withValues(alpha: 0.25)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.person_rounded, size: 16, color: AppColors.successGreen),
+                            const SizedBox(width: 6),
+                            const Text(
+                              'Student Actions',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.successGreen),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        const Text('✓ Application Initiated', style: TextStyle(fontSize: 12)),
+                        const Text('✓ Documents Uploaded', style: TextStyle(fontSize: 12)),
+                        Text(
+                          '✓ Reason: ${reason.toString().length > 25 ? "${reason.toString().substring(0, 22)}..." : reason}',
+                          style: const TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.amityBlue.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.amityBlue.withValues(alpha: 0.25)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.account_balance_rounded, size: 16, color: AppColors.amityBlue),
+                            const SizedBox(width: 6),
+                            const Text(
+                              'Staff / University Side',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.amityBlue),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        if (totalGatesCount > 0)
+                          Text('• Cleared Desks: $clearedGatesCount of $totalGatesCount',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))
+                        else
+                          const Text('• Reviewing dossier', style: TextStyle(fontSize: 12)),
+                        Text(
+                          status.toString().toUpperCase() == 'APPROVED'
+                              ? '• Process Approved'
+                              : (status.toString().toUpperCase() == 'REJECTED'
+                                  ? '• Request Rejected'
+                                  : '• In Active Verification'),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: status.toString().toUpperCase() == 'APPROVED'
+                                ? AppColors.successGreen
+                                : AppColors.amityBlue,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            // Official Staff Messages Feed
+            if (staffMessages.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.amber.shade300),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.mark_chat_unread_rounded, size: 18, color: Colors.amber.shade900),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Official Staff Communications (${staffMessages.length})',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.amber.shade900),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    ...staffMessages.reversed.take(3).map((m) {
+                      final desc = m['description'] ?? m['title'] ?? '';
+                      final actor = m['actor'] ?? 'Staff Desk';
+                      final time = m['timestamp']?.toString().split('T').first ?? '';
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          '• [$actor $time]: $desc',
+                          style: const TextStyle(fontSize: 12, color: Colors.black87),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
               ),
             ],
 
@@ -224,9 +395,9 @@ class _WorkflowCard extends StatelessWidget {
                       color: AppColors.amityBlue.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: const Text(
-                      '4-Stage Audit',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.amityBlue),
+                    child: Text(
+                      '$clearedGatesCount/$totalGatesCount Cleared',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.amityBlue),
                     ),
                   ),
                 ],
@@ -241,17 +412,28 @@ class _WorkflowCard extends StatelessWidget {
               _ClearanceVoucherCard(voucher: voucher),
             ],
 
-            // Checklist
+            // Dynamic Checklist (Never static 'Item'!)
             if (checklist.isNotEmpty) ...[
               const Divider(height: 24),
-              Text('Checklist', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Clearance Checklist', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                  Text(
+                    '${checklist.where((c) => (c is Map && (c['status'] == 'completed' || c['status'] == 'verified' || c['completed'] == true))).length}/${checklist.length} Complete',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
               ...checklist.map((item) {
                 final itemMap = item is Map ? Map<String, dynamic>.from(item) : <String, dynamic>{};
-                final name = itemMap['name'] ?? itemMap['item'] ?? 'Item';
-                final completed = itemMap['completed'] ?? false;
+                final name = itemMap['label'] ?? itemMap['description'] ?? itemMap['name'] ?? itemMap['item'] ?? 'Clearance Requirement';
+                final itemStatus = (itemMap['status'] ?? 'pending').toString().toLowerCase();
+                final completed = itemStatus == 'completed' || itemStatus == 'verified' || itemMap['completed'] == true;
+
                 return Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.only(bottom: 8),
                   child: Row(
                     children: [
                       Icon(
@@ -264,9 +446,25 @@ class _WorkflowCard extends StatelessWidget {
                         child: Text(
                           name.toString(),
                           style: TextStyle(
-                            fontSize: 14,
+                            fontSize: 13,
+                            fontWeight: completed ? FontWeight.normal : FontWeight.w500,
                             decoration: completed ? TextDecoration.lineThrough : null,
-                            color: completed ? Colors.grey : null,
+                            color: completed ? Colors.grey.shade600 : Colors.black87,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: completed ? AppColors.successGreen.withValues(alpha: 0.1) : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          itemStatus.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: completed ? AppColors.successGreen : Colors.grey.shade700,
                           ),
                         ),
                       ),

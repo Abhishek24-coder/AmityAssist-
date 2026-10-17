@@ -9,13 +9,117 @@ import '../../../core/utils/download_service.dart';
 import '../../../core/widgets/uniassist_logo.dart';
 import '../../kiosk/presentation/assistant_fab.dart';
 
-class GuestServicesScreen extends StatelessWidget {
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../staff/application/institution_modules_provider.dart';
+
+class GuestServicesScreen extends ConsumerWidget {
   const GuestServicesScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isCompact = screenWidth < 800;
+    final modules = ref.watch(institutionModulesProvider).value ?? const {};
+
+    final categories = <Widget>[];
+
+    if (modules['withdrawal'] ?? true) {
+      categories.add(
+        _CategoryCard(
+          title: 'Procedures',
+          icon: Icons.account_tree_outlined,
+          color: AppColors.primary,
+          delay: 200,
+          route: '/withdrawal',
+        ),
+      );
+    }
+
+    if (modules['forms'] ?? true) {
+      categories.add(
+        _CategoryCard(
+          title: 'Forms',
+          icon: Icons.description_outlined,
+          color: AppColors.teal,
+          delay: 250,
+          route: '/login',
+        ),
+      );
+    }
+
+    if (modules['documents'] ?? true) {
+      categories.add(
+        _CategoryCard(
+          title: 'Documents',
+          icon: Icons.folder_open_rounded,
+          color: AppColors.gold,
+          delay: 300,
+          route: '/login', // Requires login
+        ),
+      );
+    }
+
+    if (modules['notices'] ?? true) {
+      categories.add(
+        _CategoryCard(
+          title: 'Notices',
+          icon: Icons.campaign_outlined,
+          color: AppColors.danger,
+          delay: 350,
+          route: '/notices',
+        ),
+      );
+    }
+
+    if (modules['voice_ai'] ?? true) {
+      categories.add(
+        _CategoryCard(
+          title: 'AI Campus Advisor',
+          subtitle: 'Voice & text guidance for policies, procedures & tracking',
+          badge: '24/7 AI',
+          icon: Icons.support_agent_rounded,
+          color: AppColors.teal,
+          delay: 400,
+          route: '/chat',
+        ),
+      );
+    }
+
+    if (modules['scholarships'] ?? true) {
+      categories.add(
+        _CategoryCard(
+          title: 'Scholarships',
+          icon: Icons.school_outlined,
+          color: AppColors.teal,
+          delay: 450,
+          route: '/scholarship',
+        ),
+      );
+    }
+
+    if (modules['forms'] ?? true) {
+      categories.add(
+        _CategoryCard(
+          title: 'Certificates',
+          icon: Icons.verified_outlined,
+          color: AppColors.gold,
+          delay: 500,
+          route: '/forms',
+        ),
+      );
+    }
+
+    if (modules['hostel'] ?? true) {
+      categories.add(
+        _CategoryCard(
+          title: 'Hostel Services',
+          icon: Icons.apartment_rounded,
+          color: AppColors.danger,
+          delay: 550,
+          route: '/login',
+        ),
+      );
+    }
 
     return Scaffold(
       floatingActionButton: const AssistantFab(),
@@ -94,64 +198,7 @@ class GuestServicesScreen extends StatelessWidget {
                           mainAxisSpacing: 24,
                           crossAxisSpacing: 24,
                           childAspectRatio: 1.1,
-                          children: [
-                            _CategoryCard(
-                              title: 'Procedures',
-                              icon: Icons.account_tree_outlined,
-                              color: AppColors.primary,
-                              delay: 200,
-                              route: '/withdrawal',
-                            ),
-                            _CategoryCard(
-                              title: 'Forms',
-                              icon: Icons.description_outlined,
-                              color: AppColors.teal,
-                              delay: 250,
-                              route: '/forms',
-                            ),
-                            _CategoryCard(
-                              title: 'Documents',
-                              icon: Icons.folder_open_rounded,
-                              color: AppColors.gold,
-                              delay: 300,
-                              route: '/login', // Requires login
-                            ),
-                            _CategoryCard(
-                              title: 'Notices',
-                              icon: Icons.campaign_outlined,
-                              color: AppColors.danger,
-                              delay: 350,
-                              route: '/notices',
-                            ),
-                            _CategoryCard(
-                              title: 'FAQs',
-                              icon: Icons.help_outline_rounded,
-                              color: AppColors.primary,
-                              delay: 400,
-                              route: '/chat',
-                            ),
-                            _CategoryCard(
-                              title: 'Scholarships',
-                              icon: Icons.school_outlined,
-                              color: AppColors.teal,
-                              delay: 450,
-                              route: '/scholarship',
-                            ),
-                            _CategoryCard(
-                              title: 'Certificates',
-                              icon: Icons.verified_outlined,
-                              color: AppColors.gold,
-                              delay: 500,
-                              route: '/forms',
-                            ),
-                            _CategoryCard(
-                              title: 'Hostel Services',
-                              icon: Icons.apartment_rounded,
-                              color: AppColors.danger,
-                              delay: 550,
-                              route: '/login',
-                            ),
-                          ],
+                          children: categories,
                         ),
                       ],
                     ),
@@ -169,6 +216,8 @@ class GuestServicesScreen extends StatelessWidget {
 class _CategoryCard extends StatelessWidget {
   const _CategoryCard({
     required this.title,
+    this.subtitle,
+    this.badge,
     required this.icon,
     required this.color,
     required this.delay,
@@ -176,6 +225,8 @@ class _CategoryCard extends StatelessWidget {
   });
 
   final String title;
+  final String? subtitle;
+  final String? badge;
   final IconData icon;
   final Color color;
   final int delay;
@@ -186,9 +237,38 @@ class _CategoryCard extends StatelessWidget {
     return InkWell(
       onTap: () {
         if (route == '/login') {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Please login to access $title.')),
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.lock_person_rounded, color: AppColors.primary),
+                  SizedBox(width: 8),
+                  Text('Student Sign-In Required', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: Text(
+                'Access to $title and official withdrawal procedures requires verified student authentication.\n\nPlease sign in with your student credentials to proceed.',
+                style: const TextStyle(height: 1.4),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    context.push('/login');
+                  },
+                  icon: const Icon(Icons.login_rounded, size: 18),
+                  label: const Text('Sign In as Student'),
+                ),
+              ],
+            ),
           );
+          return;
         }
         context.push(route);
       },
@@ -206,24 +286,64 @@ class _CategoryCard extends StatelessWidget {
             ),
           ],
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Stack(
           children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
+            if (badge != null)
+              Positioned(
+                top: 10,
+                right: 10,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    badge!,
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: color),
+                  ),
+                ),
               ),
-              child: Icon(icon, size: 36, color: color),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: AppColors.ink,
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(icon, size: 32, color: color),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      title,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle!,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade600,
+                          height: 1.2,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
           ],

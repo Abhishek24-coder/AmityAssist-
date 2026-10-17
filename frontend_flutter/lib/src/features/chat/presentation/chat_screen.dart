@@ -6,7 +6,9 @@ import 'package:http/http.dart' as http;
 
 import '../../../core/api_config.dart';
 import '../../../core/theme/kiosk_theme.dart';
+import '../../../core/widgets/formatted_markdown_text.dart';
 import '../../../core/widgets/uniassist_logo.dart';
+import '../../auth/application/auth_provider.dart';
 
 class ChatMessage {
   const ChatMessage({
@@ -39,9 +41,11 @@ class ChatState {
 }
 
 class AdvisorNotifier extends StateNotifier<ChatState> {
-  AdvisorNotifier() : super(const ChatState()) {
+  AdvisorNotifier(this._ref) : super(const ChatState()) {
     _initWelcome();
   }
+
+  final Ref _ref;
 
   void _initWelcome() {
     state = ChatState(
@@ -207,10 +211,26 @@ class AdvisorNotifier extends StateNotifier<ChatState> {
 
   Future<void> _queryBackendPolicy(String query, List<ChatMessage> newMessages) async {
     try {
+      final auth = _ref.read(authProvider);
+      final studentId = auth.isAuthenticated ? auth.studentId : null;
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      if (auth.token != null && auth.token!.isNotEmpty) {
+        headers['Authorization'] = 'Bearer ${auth.token}';
+      }
+
+      final historyPayload = newMessages.map((m) => {
+        'role': m.isUser ? 'user' : 'assistant',
+        'content': m.text,
+      }).toList();
+
       final res = await http.post(
         Uri.parse('${ApiConfig.apiUrl}/policy/guide'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'query': query}),
+        headers: headers,
+        body: jsonEncode({
+          'query': query,
+          'student_id': studentId,
+          'conversation_history': historyPayload,
+        }),
       );
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
@@ -233,9 +253,23 @@ class AdvisorNotifier extends StateNotifier<ChatState> {
         }
         final fullReply = refs.isNotEmpty ? '$guidance\n\nVerified Policy: $refs' : guidance;
         newMessages.add(ChatMessage(text: fullReply, isUser: false));
+
+        List<String> nextOptions = ['Withdrawal', 'Certificates', 'Grievances', 'Start Over'];
+        final status = data['status']?.toString();
+        final rawOptions = data['clarification_options'] as List?;
+        if (status == 'trigger_cross_question' && rawOptions != null && rawOptions.isNotEmpty) {
+          nextOptions = rawOptions.map((opt) {
+            if (opt is Map && opt['label'] != null) {
+              return opt['label'].toString();
+            }
+            return opt.toString();
+          }).toList();
+          nextOptions.add('Start Over');
+        }
+
         state = state.copyWith(
           messages: newMessages,
-          currentOptions: ['Withdrawal', 'Certificates', 'Grievances', 'Start Over'],
+          currentOptions: nextOptions,
         );
         return;
       }
@@ -254,7 +288,7 @@ class AdvisorNotifier extends StateNotifier<ChatState> {
 }
 
 final advisorProvider = StateNotifierProvider.autoDispose<AdvisorNotifier, ChatState>((ref) {
-  return AdvisorNotifier();
+  return AdvisorNotifier(ref);
 });
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -434,14 +468,10 @@ class _ChatBubble extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: isUser ? AppColors.primary : AppColors.line),
             ),
-            child: Text(
-              message.text,
-              style: TextStyle(
-                color: isUser ? Colors.white : AppColors.ink,
-                fontSize: 15.5,
-                height: 1.42,
-                fontWeight: FontWeight.w600,
-              ),
+            child: FormattedMarkdownText(
+              text: message.text,
+              isUser: isUser,
+              fontSize: 15.5,
             ),
           ),
         ],

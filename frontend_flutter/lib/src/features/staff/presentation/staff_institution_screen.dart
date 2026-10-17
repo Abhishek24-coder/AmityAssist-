@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/theme/kiosk_theme.dart';
+import '../application/institution_modules_provider.dart';
 
 /// Phase 28 + Phase 30: Staff Institution Configurator.
 /// Admin Settings screen for university branding, dynamic clearance chain
@@ -24,6 +25,9 @@ class _StaffInstitutionScreenState extends ConsumerState<StaffInstitutionScreen>
   Map<String, dynamic> _modules = {};
   List<dynamic> _procedureSteps = [];
   final String _selectedProcedureCode = 'withdrawal';
+  List<dynamic> _policies = [];
+  String _policySearchQuery = '';
+  String _selectedPolicyCategory = 'All';
 
   static const List<Map<String, String>> _availableModules = [
     {
@@ -91,7 +95,7 @@ class _StaffInstitutionScreenState extends ConsumerState<StaffInstitutionScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
     _fetchAll();
   }
 
@@ -110,6 +114,7 @@ class _StaffInstitutionScreenState extends ConsumerState<StaffInstitutionScreen>
       final slabRes = await client.get('/institution/refund-slabs');
       final modulesRes = await client.get('/institution/modules');
       final stepsRes = await client.get('/procedures/$_selectedProcedureCode/steps');
+      final policyRes = await client.get('/policy/admin/list');
 
       if (mounted) {
         setState(() {
@@ -128,6 +133,9 @@ class _StaffInstitutionScreenState extends ConsumerState<StaffInstitutionScreen>
           if (stepsRes.data is Map<String, dynamic>) {
             _procedureSteps = (stepsRes.data as Map<String, dynamic>)['steps'] as List? ?? [];
           }
+          if (policyRes.data is Map<String, dynamic>) {
+            _policies = (policyRes.data as Map<String, dynamic>)['policies'] as List? ?? [];
+          }
           _isLoading = false;
         });
       }
@@ -136,6 +144,18 @@ class _StaffInstitutionScreenState extends ConsumerState<StaffInstitutionScreen>
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  Future<void> _fetchPolicies() async {
+    try {
+      final client = ref.read(apiClientProvider);
+      final policyRes = await client.get('/policy/admin/list');
+      if (mounted && policyRes.data is Map<String, dynamic>) {
+        setState(() {
+          _policies = (policyRes.data as Map<String, dynamic>)['policies'] as List? ?? [];
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _fetchSteps() async {
@@ -161,6 +181,7 @@ class _StaffInstitutionScreenState extends ConsumerState<StaffInstitutionScreen>
         '/institution/modules',
         data: {'modules': _modules},
       );
+      ref.invalidate(institutionModulesProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -206,6 +227,7 @@ class _StaffInstitutionScreenState extends ConsumerState<StaffInstitutionScreen>
             Tab(icon: Icon(Icons.account_balance_wallet), text: 'Refund Slabs'),
             Tab(icon: Icon(Icons.toggle_on_rounded), text: 'Switchboard'),
             Tab(icon: Icon(Icons.format_list_numbered_rounded), text: 'Procedure Steps'),
+            Tab(icon: Icon(Icons.gavel_rounded), text: 'Policy Editor'),
           ],
         ),
       ),
@@ -219,6 +241,7 @@ class _StaffInstitutionScreenState extends ConsumerState<StaffInstitutionScreen>
                 _buildRefundSlabsTab(),
                 _buildModulesTab(),
                 _buildProcedureStepsTab(),
+                _buildPolicyEditorTab(),
               ],
             ),
     );
@@ -874,4 +897,563 @@ class _StaffInstitutionScreenState extends ConsumerState<StaffInstitutionScreen>
       ),
     );
   }
+
+  // ── Policy & Ordinance Editor Tab ─────────────────────────────────────────
+  Widget _buildPolicyEditorTab() {
+    final categories = ['All', 'Academic', 'Clearance & ID Card', 'Financial & Refunds', 'Hostels & Mess', 'Discipline & Conduct', 'Grievance & SLA'];
+
+    final filtered = _policies.where((p) {
+      if (_selectedPolicyCategory != 'All') {
+        final cat = (p['category'] ?? '').toString().toLowerCase();
+        if (!cat.contains(_selectedPolicyCategory.toLowerCase())) {
+          return false;
+        }
+      }
+      if (_policySearchQuery.trim().isNotEmpty) {
+        final q = _policySearchQuery.trim().toLowerCase();
+        final title = (p['title'] ?? '').toString().toLowerCase();
+        final clause = (p['clause_code'] ?? '').toString().toLowerCase();
+        final docId = (p['doc_id'] ?? '').toString().toLowerCase();
+        final content = (p['content'] ?? '').toString().toLowerCase();
+        return title.contains(q) || clause.contains(q) || docId.contains(q) || content.contains(q);
+      }
+      return true;
+    }).toList();
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00695C).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.gavel_rounded, color: Color(0xFF00695C), size: 28),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'University Policy & Ordinance Editor',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Customize statutory ordinances, create university-specific clauses, and synchronize live with AI search & hybrid guidance.',
+                      style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton.icon(
+                onPressed: () => _showEditPolicyDialog(),
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Add Policy'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00695C),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // Search and Filters
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Search by title, clause code, or keyword (e.g. ORD-ACAD, refund, hostel)...',
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    suffixIcon: _policySearchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 18),
+                            onPressed: () => setState(() => _policySearchQuery = ''),
+                          )
+                        : null,
+                    isDense: true,
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade300)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade300)),
+                  ),
+                  onChanged: (val) => setState(() => _policySearchQuery = val),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Category Chips
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: categories.map((cat) {
+                final isSelected = _selectedPolicyCategory == cat;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilterChip(
+                    label: Text(cat),
+                    selected: isSelected,
+                    onSelected: (_) => setState(() => _selectedPolicyCategory = cat),
+                    selectedColor: const Color(0xFF00695C).withValues(alpha: 0.15),
+                    checkmarkColor: const Color(0xFF00695C),
+                    labelStyle: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: isSelected ? const Color(0xFF00695C) : Colors.grey.shade700,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      side: BorderSide(color: isSelected ? const Color(0xFF00695C) : Colors.grey.shade300),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 18),
+
+          // Policies Count Banner
+          Row(
+            children: [
+              Text(
+                'Showing ${filtered.length} of ${_policies.length} policies',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.grey.shade700),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.bolt_rounded, size: 14, color: Colors.green.shade700),
+                    const SizedBox(width: 4),
+                    Text(
+                      'AI Real-Time FTS5 Sync Active',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green.shade800),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Policy Cards
+          if (filtered.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(48),
+                child: Column(
+                  children: [
+                    Icon(Icons.policy_outlined, size: 54, color: Colors.grey.shade400),
+                    const SizedBox(height: 12),
+                    Text('No matching policies found', style: TextStyle(color: Colors.grey.shade600, fontSize: 15)),
+                  ],
+                ),
+              ),
+            )
+          else
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: filtered.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final p = filtered[index];
+                final isCustom = p['is_custom'] == 1 || p['is_custom'] == true;
+                final clauseCode = p['clause_code'] ?? 'ORD-00';
+                final category = p['category'] ?? 'General';
+                final title = p['title'] ?? 'Untitled Policy';
+                final content = p['content'] ?? '';
+                final docId = p['doc_id'] ?? '';
+                final actionLabel = p['action_label'] ?? 'View Policy';
+
+                return Card(
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    side: BorderSide(
+                      color: isCustom ? Colors.amber.shade300 : Colors.grey.shade200,
+                      width: isCustom ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Badges & Action Buttons
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF00695C).withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                clauseCode,
+                                style: const TextStyle(
+                                  color: Color(0xFF00695C),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                category,
+                                style: TextStyle(
+                                  color: Colors.grey.shade700,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: isCustom ? Colors.amber.shade50 : Colors.blue.shade50,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: isCustom ? Colors.amber.shade400 : Colors.blue.shade200,
+                                  width: 0.8,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    isCustom ? Icons.edit_note_rounded : Icons.verified_rounded,
+                                    size: 13,
+                                    color: isCustom ? Colors.amber.shade900 : Colors.blue.shade700,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    isCustom ? 'Customized' : 'Statutory Default',
+                                    style: TextStyle(
+                                      color: isCustom ? Colors.amber.shade900 : Colors.blue.shade700,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Spacer(),
+                            IconButton(
+                              icon: const Icon(Icons.edit_outlined, size: 20),
+                              tooltip: 'Edit Ordinance',
+                              color: const Color(0xFF00695C),
+                              onPressed: () => _showEditPolicyDialog(p),
+                            ),
+                            IconButton(
+                              icon: Icon(
+                                isCustom ? Icons.restart_alt_rounded : Icons.delete_outline_rounded,
+                                size: 20,
+                              ),
+                              tooltip: isCustom ? 'Reset to Default / Delete' : 'Statutory ordinance',
+                              color: isCustom ? AppColors.urgentRed : Colors.grey.shade400,
+                              onPressed: isCustom ? () => _confirmDeletePolicy(p) : null,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Title
+                        Text(
+                          title,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.ink),
+                        ),
+                        const SizedBox(height: 6),
+
+                        // Content
+                        Text(
+                          content,
+                          style: TextStyle(fontSize: 13, height: 1.4, color: Colors.grey.shade800),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Footer Meta
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade50,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.grey.shade200),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.link_rounded, size: 14, color: Colors.grey.shade600),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    actionLabel,
+                                    style: TextStyle(fontSize: 11, color: Colors.grey.shade700, fontWeight: FontWeight.w600),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              'ID: $docId',
+                              style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.grey.shade400),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditPolicyDialog([Map<String, dynamic>? policy]) {
+    final isNew = policy == null;
+    final docIdCtrl = TextEditingController(text: policy?['doc_id'] ?? '');
+    final categoryCtrl = TextEditingController(text: policy?['category'] ?? 'Academic');
+    final titleCtrl = TextEditingController(text: policy?['title'] ?? '');
+    final clauseCtrl = TextEditingController(text: policy?['clause_code'] ?? 'ORD-');
+    final contentCtrl = TextEditingController(text: policy?['content'] ?? '');
+    final urlCtrl = TextEditingController(text: policy?['action_url'] ?? '/forms');
+    final labelCtrl = TextEditingController(text: policy?['action_label'] ?? 'View Policy');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(isNew ? Icons.add_circle_outline : Icons.edit_note_rounded, color: const Color(0xFF00695C)),
+            const SizedBox(width: 8),
+            Text(isNew ? 'Add New Policy Ordinance' : 'Edit Policy Ordinance', style: const TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: SizedBox(
+          width: 580,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isNew) ...[
+                  TextField(
+                    controller: docIdCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Policy Unique Identifier (doc_id) *',
+                      hintText: 'e.g. ord_hostel_curfew_policy',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ] else ...[
+                  Text('Editing: ${policy['doc_id']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 13, fontFamily: 'monospace')),
+                  const SizedBox(height: 12),
+                ],
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: TextField(
+                        controller: clauseCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Clause Code *',
+                          hintText: 'e.g. ORD-HST-3.2',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 4,
+                      child: TextField(
+                        controller: categoryCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Category *',
+                          hintText: 'Academic, Hostels, etc.',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: titleCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Policy Title *',
+                    hintText: 'e.g. Student Medical Leave & Attendance Regularization',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: contentCtrl,
+                  maxLines: 5,
+                  decoration: const InputDecoration(
+                    labelText: 'Statutory Clause Text / Content *',
+                    hintText: 'Enter full policy ordinance text with attendance percentages, SLA rules, fees, etc.',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: urlCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Action URL',
+                          hintText: '/forms, /grievance, etc.',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: labelCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Action Button Label',
+                          hintText: 'View Policy / Download Form',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              final docId = (isNew ? docIdCtrl.text : (policy['doc_id'] ?? '')).trim();
+              final category = categoryCtrl.text.trim();
+              final title = titleCtrl.text.trim();
+              final clause = clauseCtrl.text.trim();
+              final content = contentCtrl.text.trim();
+
+              if (docId.isEmpty || title.isEmpty || clause.isEmpty || content.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please fill all required fields (*)'), backgroundColor: AppColors.urgentRed),
+                );
+                return;
+              }
+
+              Navigator.of(ctx).pop();
+              try {
+                final client = ref.read(apiClientProvider);
+                await client.post(
+                  '/policy/admin/save',
+                  data: {
+                    'doc_id': docId,
+                    'category': category.isEmpty ? 'General' : category,
+                    'title': title,
+                    'clause_code': clause,
+                    'content': content,
+                    'action_url': urlCtrl.text.trim().isEmpty ? '/forms' : urlCtrl.text.trim(),
+                    'action_label': labelCtrl.text.trim().isEmpty ? 'View Policy' : labelCtrl.text.trim(),
+                  },
+                );
+                await _fetchPolicies();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Policy "$title" saved & indexed into AI search!'),
+                      backgroundColor: AppColors.successGreen,
+                    ),
+                  );
+                }
+              } catch (_) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Failed to save policy ordinance'), backgroundColor: AppColors.urgentRed),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00695C), foregroundColor: Colors.white),
+            child: const Text('Save & Index in AI'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeletePolicy(Map<String, dynamic> policy) {
+    final docId = policy['doc_id'] ?? '';
+    final title = policy['title'] ?? 'Policy';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset or Delete Policy?'),
+        content: Text('Are you sure you want to revert or delete "$title" ($docId)?\n\nIf this was a customized default ordinance, it will be restored to its statutory seed. The AI search engine will immediately update its knowledge index.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              try {
+                final client = ref.read(apiClientProvider);
+                await client.delete('/policy/admin/$docId');
+                await _fetchPolicies();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Policy "$docId" reset/deleted successfully'), backgroundColor: AppColors.urgentRed),
+                  );
+                }
+              } catch (_) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Failed to delete policy'), backgroundColor: AppColors.urgentRed),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.urgentRed, foregroundColor: Colors.white),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+  }
 }
+

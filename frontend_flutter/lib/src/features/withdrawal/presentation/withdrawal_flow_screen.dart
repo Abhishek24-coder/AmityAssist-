@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/theme/kiosk_theme.dart';
+import '../../../core/utils/platform_file_picker.dart';
 import '../../auth/application/auth_provider.dart';
 
 class WithdrawalFlowScreen extends ConsumerStatefulWidget {
@@ -18,6 +19,8 @@ class _WithdrawalFlowScreenState extends ConsumerState<WithdrawalFlowScreen> {
   int _currentStep = 0;
   String? _reason;
   bool _isSubmitting = false;
+  bool _isPickingFile = false;
+  PickedDocFile? _pickedFile;
 
   final _reasons = [
     'Medical Reasons',
@@ -27,10 +30,136 @@ class _WithdrawalFlowScreenState extends ConsumerState<WithdrawalFlowScreen> {
     'Other'
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final auth = ref.read(authProvider);
+      if (!auth.isAuthenticated || auth.studentId == null || auth.isStaff) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogCtx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.lock_person_rounded, color: AppColors.primary),
+                SizedBox(width: 8),
+                Text('Student Sign-In Required', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: const Text(
+              'Withdrawal submission requires verified student credentials.\nPlease sign in as a student to proceed.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(dialogCtx);
+                  context.go('/services');
+                },
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(dialogCtx);
+                  context.push('/login');
+                },
+                child: const Text('Sign In as Student'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
+      // Check if student already has an active request (strictly once at a time)
+      try {
+        final dio = ref.read(apiClientProvider);
+        final resp = await dio.get('/withdrawal/status/${auth.studentId}');
+        final data = resp.data as Map<String, dynamic>;
+        final hasRequest = data['has_request'] == true;
+        final request = data['request'] as Map<String, dynamic>?;
+        final status = (request?['status'] ?? '').toString().toLowerCase();
+        final isTerminal = status == 'completed' || status == 'rejected' || status == 'cancelled';
+
+        if (hasRequest && !isTerminal && mounted) {
+          final refNo = request?['reference_no'] ?? 'AMITY-WTH';
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (dialogCtx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+                  SizedBox(width: 8),
+                  Text('Active Request In Progress', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: Text(
+                'You already have an active withdrawal application in progress ($refNo).\n\nUnder university rules, only one active withdrawal request is permitted at a time.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(dialogCtx);
+                    context.go('/services');
+                  },
+                  child: const Text('Return to Services'),
+                ),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(dialogCtx);
+                    context.go('/request-status');
+                  },
+                  icon: const Icon(Icons.track_changes_rounded, size: 18),
+                  label: const Text('Track Active Request'),
+                ),
+              ],
+            ),
+          );
+        }
+      } catch (_) {}
+    });
+  }
+
+  Future<void> _pickDocument() async {
+    setState(() => _isPickingFile = true);
+    try {
+      final file = await PlatformFilePicker.pickDocument();
+      if (file != null && mounted) {
+        setState(() => _pickedFile = file);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Document selected: ${file.name} (${file.formattedSize})'),
+            backgroundColor: AppColors.successGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to select file: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isPickingFile = false);
+    }
+  }
+
   Future<void> _submitRequest() async {
     setState(() => _isSubmitting = true);
     final auth = ref.read(authProvider);
-    final studentId = auth.studentId ?? 'STU001';
+    if (!auth.isAuthenticated || auth.studentId == null || auth.isStaff) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please sign in with verified student credentials to submit.')),
+        );
+        setState(() => _isSubmitting = false);
+      }
+      return;
+    }
+    final studentId = auth.studentId!;
 
     try {
       final dio = ref.read(apiClientProvider);
@@ -46,6 +175,20 @@ class _WithdrawalFlowScreenState extends ConsumerState<WithdrawalFlowScreen> {
       final refNo = data['reference_no']?.toString() ?? 'AMITY-WTH-2026';
       final voucher = data['voucher'] as Map<String, dynamic>?;
       final refundAmt = voucher?['net_refundable_amount']?.toString() ?? '119,000.00';
+
+      // If document was selected, attach it to student documents registry
+      if (_pickedFile != null) {
+        try {
+          final formData = FormData.fromMap({
+            'student_id': studentId,
+            'document_type': 'withdrawal_application',
+            'file': _pickedFile!.bytes != null
+                ? MultipartFile.fromBytes(_pickedFile!.bytes!, filename: _pickedFile!.name)
+                : MultipartFile.fromString('Official Signed Withdrawal Document', filename: _pickedFile!.name),
+          });
+          await dio.post('/documents/upload', data: formData);
+        } catch (_) {}
+      }
 
       if (mounted) {
         showDialog(
@@ -119,10 +262,42 @@ class _WithdrawalFlowScreenState extends ConsumerState<WithdrawalFlowScreen> {
         );
       }
     } on DioException catch (e) {
+      final detail = e.response?.data?['detail']?.toString() ?? e.message ?? 'Unknown error';
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.response?.data?['detail'] ?? e.message}')),
-        );
+        if (detail.toLowerCase().contains('active withdrawal request') || detail.toLowerCase().contains('already in progress')) {
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 26),
+                  SizedBox(width: 8),
+                  Text('Active Request Exists', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: Text(detail),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Close'),
+                ),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    context.go('/request-status');
+                  },
+                  icon: const Icon(Icons.track_changes_rounded, size: 18),
+                  label: const Text('Track Live Status'),
+                ),
+              ],
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $detail')),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -238,21 +413,104 @@ class _WithdrawalFlowScreenState extends ConsumerState<WithdrawalFlowScreen> {
           ),
           Step(
             title: const Text('Upload & Submit'),
-            content: Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                border: Border.all(
-                    color: Colors.grey.shade400, style: BorderStyle.solid),
-                borderRadius: BorderRadius.circular(12),
-                color: Colors.grey.shade100,
-              ),
-              child: const Center(
-                child: Column(
-                  children: [
-                    Icon(Icons.upload_file, size: 48, color: Colors.grey),
-                    SizedBox(height: 12),
-                    Text('Tap to scan or upload your signed documents'),
-                  ],
+            content: InkWell(
+              onTap: _isPickingFile ? null : _pickDocument,
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: _pickedFile != null ? AppColors.successGreen : const Color(0xFF2563EB).withValues(alpha: 0.5),
+                    width: _pickedFile != null ? 2 : 1.5,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  color: _pickedFile != null ? const Color(0xFFF0FDF4) : const Color(0xFFF8FAFC),
+                ),
+                child: Center(
+                  child: _pickedFile == null
+                      ? Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF2563EB).withValues(alpha: 0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: _isPickingFile
+                                  ? const SizedBox(
+                                      width: 28,
+                                      height: 28,
+                                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                                    )
+                                  : const Icon(Icons.upload_file_rounded, size: 36, color: Color(0xFF2563EB)),
+                            ),
+                            const SizedBox(height: 14),
+                            const Text(
+                              'Tap to browse or upload signed documents from your PC / files',
+                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Supports PDF, DOCX, JPG, PNG • Max size 15 MB',
+                              style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.successGreen.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Icon(Icons.check_circle_rounded, color: AppColors.successGreen, size: 28),
+                                ),
+                                const SizedBox(width: 12),
+                                Flexible(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _pickedFile!.name,
+                                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF0F172A)),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '${_pickedFile!.formattedSize} • Ready to submit for verification',
+                                        style: const TextStyle(fontSize: 12, color: AppColors.successGreen, fontWeight: FontWeight.w600),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                OutlinedButton.icon(
+                                  onPressed: _pickDocument,
+                                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                                  label: const Text('Change Document'),
+                                ),
+                                const SizedBox(width: 12),
+                                TextButton.icon(
+                                  onPressed: () => setState(() => _pickedFile = null),
+                                  icon: const Icon(Icons.close_rounded, size: 16, color: Colors.red),
+                                  label: const Text('Remove', style: TextStyle(color: Colors.red)),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                 ),
               ),
             ),

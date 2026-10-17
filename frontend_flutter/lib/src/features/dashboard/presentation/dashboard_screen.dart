@@ -8,6 +8,7 @@ import '../../../core/widgets/uniassist_logo.dart';
 import '../../auth/application/auth_provider.dart';
 import '../../notifications/application/notifications_provider.dart';
 import '../../student/application/student_provider.dart';
+import '../../staff/application/institution_modules_provider.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -16,6 +17,7 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final studentAsync = ref.watch(studentProfileProvider);
     final unreadCount = ref.watch(unreadNotificationCountProvider);
+    final modules = ref.watch(institutionModulesProvider).value ?? const {};
 
     return Scaffold(
       appBar: AppBar(
@@ -44,6 +46,8 @@ class DashboardScreen extends ConsumerWidget {
             if (student == null) {
               return const _ErrorPanel(message: 'No student profile is active.');
             }
+            final activeServices = _services(context, modules);
+
             return SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(28, 20, 28, 36),
               child: Column(
@@ -66,7 +70,7 @@ class DashboardScreen extends ConsumerWidget {
                         mainAxisSpacing: 14,
                         crossAxisSpacing: 14,
                         childAspectRatio: width >= 720 ? 1.45 : 1.05,
-                        children: _services(context)
+                        children: activeServices
                             .asMap()
                             .entries
                             .map((entry) => entry.value.animate().fadeIn(
@@ -86,43 +90,70 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  List<Widget> _services(BuildContext context) {
-    return [
-      _ServiceTile(
-        title: 'Withdrawal',
-        subtitle: 'Guidance, checklist, forms, status',
-        icon: Icons.assignment_return_rounded,
-        color: AppColors.danger,
-        route: '/withdrawal',
-      ),
-      _ServiceTile(
-        title: 'Academics',
-        subtitle: 'CGPA, attendance, exams, back papers',
-        icon: Icons.menu_book_rounded,
-        color: AppColors.primary,
-        route: '/academics',
-      ),
-      _ServiceTile(
-        title: 'Scholarships',
-        subtitle: 'Eligibility and applications',
-        icon: Icons.workspace_premium_rounded,
-        color: AppColors.gold,
-        route: '/scholarship',
-      ),
-      _ServiceTile(
-        title: 'Grievances',
-        subtitle: 'File and track student issues',
-        icon: Icons.rule_rounded,
-        color: const Color(0xFF6F4CB2),
-        route: '/grievance',
-      ),
-      _ServiceTile(
-        title: 'Documents',
-        subtitle: 'Upload, OCR, verification status',
-        icon: Icons.source_rounded,
-        color: AppColors.teal,
-        route: '/documents',
-      ),
+  List<Widget> _services(BuildContext context, Map<String, bool> modules) {
+    final list = <Widget>[];
+
+    if (modules['withdrawal'] ?? true) {
+      list.add(
+        _ServiceTile(
+          title: 'Withdrawal',
+          subtitle: 'Guidance, checklist, forms, status',
+          icon: Icons.assignment_return_rounded,
+          color: AppColors.danger,
+          route: '/withdrawal',
+        ),
+      );
+    }
+
+    if (modules['academics'] ?? true) {
+      list.add(
+        _ServiceTile(
+          title: 'Academics',
+          subtitle: 'CGPA, attendance, exams, back papers',
+          icon: Icons.menu_book_rounded,
+          color: AppColors.primary,
+          route: '/academics',
+        ),
+      );
+    }
+
+    if (modules['scholarships'] ?? true) {
+      list.add(
+        _ServiceTile(
+          title: 'Scholarships',
+          subtitle: 'Eligibility and applications',
+          icon: Icons.workspace_premium_rounded,
+          color: AppColors.gold,
+          route: '/scholarship',
+        ),
+      );
+    }
+
+    if (modules['grievance'] ?? true) {
+      list.add(
+        _ServiceTile(
+          title: 'Grievances',
+          subtitle: 'File and track student issues',
+          icon: Icons.rule_rounded,
+          color: const Color(0xFF6F4CB2),
+          route: '/grievance',
+        ),
+      );
+    }
+
+    if (modules['documents'] ?? true) {
+      list.add(
+        _ServiceTile(
+          title: 'Documents',
+          subtitle: 'Upload, OCR, verification status',
+          icon: Icons.source_rounded,
+          color: AppColors.teal,
+          route: '/documents',
+        ),
+      );
+    }
+
+    list.add(
       _ServiceTile(
         title: 'Request Status',
         subtitle: 'Track workflow progress',
@@ -130,28 +161,46 @@ class DashboardScreen extends ConsumerWidget {
         color: const Color(0xFF2E6EB5),
         route: '/request-status',
       ),
-      _ServiceTile(
-        title: 'Notices',
-        subtitle: 'Personalized university updates',
-        icon: Icons.campaign_rounded,
-        color: const Color(0xFFB96922),
-        route: '/notices',
-      ),
-      _ServiceTile(
-        title: 'Download Forms',
-        subtitle: 'Official formats, applications & requisitions',
-        icon: Icons.folder_open_rounded,
-        color: const Color(0xFF0F766E),
-        route: '/forms',
-      ),
-      _ServiceTile(
-        title: 'AI Advisor',
-        subtitle: 'Guided chat for university services',
-        icon: Icons.support_agent_rounded,
-        color: AppColors.teal,
-        route: '/chat',
-      ),
-    ];
+    );
+
+    if (modules['notices'] ?? true) {
+      list.add(
+        _ServiceTile(
+          title: 'Notices',
+          subtitle: 'Personalized university updates',
+          icon: Icons.campaign_rounded,
+          color: const Color(0xFFB96922),
+          route: '/notices',
+        ),
+      );
+    }
+
+    if (modules['forms'] ?? true) {
+      list.add(
+        _ServiceTile(
+          title: 'Download Forms',
+          subtitle: 'Official formats, applications & requisitions',
+          icon: Icons.folder_open_rounded,
+          color: const Color(0xFF0F766E),
+          route: '/forms',
+        ),
+      );
+    }
+
+    if (modules['voice_ai'] ?? true) {
+      list.add(
+        _ServiceTile(
+          title: 'AI Digital Counselor',
+          subtitle: 'Instant voice & chat advisor for live request tracking, procedures & policy clearances',
+          icon: Icons.support_agent_rounded,
+          color: AppColors.teal,
+          route: '/chat',
+          badge: '24/7 AI',
+        ),
+      );
+    }
+
+    return list;
   }
 }
 
@@ -317,6 +366,7 @@ class _ServiceTile extends StatelessWidget {
     required this.icon,
     required this.color,
     required this.route,
+    this.badge,
   });
 
   final String title;
@@ -324,6 +374,7 @@ class _ServiceTile extends StatelessWidget {
   final IconData icon;
   final Color color;
   final String route;
+  final String? badge;
 
   @override
   Widget build(BuildContext context) {
@@ -348,6 +399,23 @@ class _ServiceTile extends StatelessWidget {
                     child: Icon(icon, color: color, size: 27),
                   ),
                   const Spacer(),
+                  if (badge != null)
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        badge!,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: color,
+                        ),
+                      ),
+                    ),
                   const Icon(Icons.arrow_forward_rounded, color: AppColors.muted),
                 ],
               ),

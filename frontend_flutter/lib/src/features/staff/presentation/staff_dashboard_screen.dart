@@ -483,6 +483,33 @@ class StaffDashboardScreen extends ConsumerWidget {
                               ? recentActivity[index]
                               : _fallbackActivities[index];
 
+                          // Resolve dynamic icon and color if from backend
+                          IconData resolvedIcon = Icons.history_rounded;
+                          Color resolvedColor = const Color(0xFF2563EB);
+
+                          if (item['icon'] is IconData) {
+                            resolvedIcon = item['icon'] as IconData;
+                          } else {
+                            final type = (item['type'] ?? '').toString().toLowerCase();
+                            if (type == 'notesheet') {
+                              resolvedIcon = Icons.description_rounded;
+                              resolvedColor = const Color(0xFF8B5CF6);
+                            } else if (type == 'offset') {
+                              resolvedIcon = Icons.account_balance_wallet_rounded;
+                              resolvedColor = const Color(0xFF0D9488);
+                            } else if (type == 'withdrawal') {
+                              resolvedIcon = Icons.assignment_turned_in_rounded;
+                              resolvedColor = const Color(0xFF2563EB);
+                            } else if (type == 'grievance') {
+                              resolvedIcon = Icons.gavel_rounded;
+                              resolvedColor = const Color(0xFFF59E0B);
+                            }
+                          }
+
+                          if (item['color'] is Color) {
+                            resolvedColor = item['color'] as Color;
+                          }
+
                           return Container(
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
@@ -497,12 +524,12 @@ class StaffDashboardScreen extends ConsumerWidget {
                                   width: 38,
                                   height: 38,
                                   decoration: BoxDecoration(
-                                    color: (item['color'] as Color? ?? const Color(0xFF2563EB)).withValues(alpha: 0.1),
+                                    color: resolvedColor.withValues(alpha: 0.1),
                                     shape: BoxShape.circle,
                                   ),
                                   child: Icon(
-                                    item['icon'] as IconData? ?? Icons.history_rounded,
-                                    color: item['color'] as Color? ?? const Color(0xFF2563EB),
+                                    resolvedIcon,
+                                    color: resolvedColor,
                                     size: 20,
                                   ),
                                 ),
@@ -712,11 +739,11 @@ class StaffDashboardScreen extends ConsumerWidget {
       'color': const Color(0xFF3B82F6),
     },
     {
-      'action': 'Faculty Resignation Notice received for CSE Dept',
-      'dept': 'HR Office (Rm 103)',
+      'action': 'Digital Notesheet #NS-DISC-2026-088 approved by Proctor Cell',
+      'dept': 'Proctor Office',
       'time': '3h ago',
-      'icon': Icons.person_remove,
-      'color': const Color(0xFFF97316),
+      'icon': Icons.description_rounded,
+      'color': const Color(0xFF8B5CF6),
     },
   ];
 }
