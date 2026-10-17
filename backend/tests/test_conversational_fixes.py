@@ -409,3 +409,36 @@ def test_sanitize_and_verify_response_guardrails():
     assert "Sentence three?" in cleaned_sentences
     assert "Sentence four" not in cleaned_sentences
     assert "Sentence five" not in cleaned_sentences
+
+
+def test_intent_disambiguation_cross_questioning_and_role_mapping():
+    """Verify ambiguous 'I want to leave' triggers cross-questions for guest and direct withdrawal for student."""
+    # 1. Guest trigger
+    res_guest = PolicySearchService.hybrid_guidance("I want to leave", student_id="GUEST")
+    assert res_guest.get("status") == "trigger_cross_question"
+    assert res_guest.get("is_ambiguous") is True
+    assert len(res_guest.get("clarification_options", [])) == 3
+
+    # 2. Authenticated student bypass
+    res_stu = PolicySearchService.hybrid_guidance("I want to leave", student_id="STU001")
+    assert res_stu.get("domain") == "Withdrawal & Refunds"
+    assert res_stu.get("recommended_action") == "Start Withdrawal Procedure"
+    assert res_stu.get("status") is None
+
+    # 3. Multi-turn follow-up resolution
+    history = [
+        {"role": "user", "content": "I want to leave"},
+        {"role": "assistant", "content": res_guest.get("answer")},
+    ]
+    # Reply 'student'
+    res_stu_follow = PolicySearchService.hybrid_guidance("student", student_id="GUEST", history=history)
+    assert res_stu_follow.get("domain") == "Withdrawal & Refunds"
+
+    # Reply 'faculty'
+    res_fac_follow = PolicySearchService.hybrid_guidance("faculty", student_id="GUEST", history=history)
+    assert res_fac_follow.get("domain") == "HR & Staff"
+
+    # Reply 'hostel'
+    res_hstl_follow = PolicySearchService.hybrid_guidance("hostel", student_id="GUEST", history=history)
+    assert "Hostel" in res_hstl_follow.get("domain")
+

@@ -1,0 +1,122 @@
+[
+  {
+    "id": "P01",
+    "description": "Open UniAssist without logging in",
+    "expected": "Show public interface and deny protected student profile",
+    "status": "PASS",
+    "actual": "Public API: HTTP 200, Protected API: HTTP 401",
+    "notes": ""
+  },
+  {
+    "id": "P02",
+    "description": "Log in with valid student credentials",
+    "expected": "Authenticate and return JWT token with Student role",
+    "status": "PASS",
+    "actual": "HTTP 200: role=Student",
+    "notes": ""
+  },
+  {
+    "id": "P03",
+    "description": "Enter an incorrect ID",
+    "expected": "Reject authentication safely (HTTP 401)",
+    "status": "PASS",
+    "actual": "HTTP 401: We could not verify your identity. Please check your Student ID and try again.",
+    "notes": ""
+  },
+  {
+    "id": "P04",
+    "description": "Submit login form with empty fields",
+    "expected": "Validate required inputs (HTTP 422 Unprocessable Entity)",
+    "status": "PASS",
+    "actual": "HTTP 422",
+    "notes": ""
+  },
+  {
+    "id": "P05",
+    "description": "Access student-only page without authentication",
+    "expected": "Deny access (HTTP 401 Unauthorized)",
+    "status": "PASS",
+    "actual": "HTTP 401: Authentication is required to access student data.",
+    "notes": ""
+  },
+  {
+    "id": "P06",
+    "description": "Ask for another student's withdrawal / profile data",
+    "expected": "Deny unauthorized disclosure (HTTP 403 Forbidden)",
+    "status": "PASS",
+    "actual": "HTTP 403: You can only access your own student data.",
+    "notes": ""
+  },
+  {
+    "id": "P07",
+    "description": "Ask for another student's personal details",
+    "expected": "Protect student information; zero disclosure of PII",
+    "status": "PASS",
+    "actual": "PII sanitized; other student records protected",
+    "notes": ""
+  },
+  {
+    "id": "P08",
+    "description": "Log in as faculty/staff member",
+    "expected": "Show authorized staff role and issue staff JWT",
+    "status": "PASS",
+    "actual": "HTTP 200: role=Department Coordinator",
+    "notes": ""
+  },
+  {
+    "id": "P09",
+    "description": "Log in as administrator/registrar",
+    "expected": "Show authorized administrative features",
+    "status": "PASS",
+    "actual": "HTTP 200: role=Registrar",
+    "notes": ""
+  },
+  {
+    "id": "P10",
+    "description": "Try to open staff page using student account",
+    "expected": "Deny access on backend (HTTP 403 Forbidden)",
+    "status": "PASS",
+    "actual": "HTTP 403: You do not have access to this staff/admin route.",
+    "notes": ""
+  },
+  {
+    "id": "P11",
+    "description": "Log out and prevent session replay",
+    "expected": "Invalidate token/session; prevent cache reuse",
+    "status": "PASS",
+    "actual": "AuthProvider and KioskSessionProvider purge JWT and local storage on logout",
+    "notes": ""
+  },
+  {
+    "id": "P12",
+    "description": "Leave public kiosk session idle",
+    "expected": "Configured 120s auto-lock timeout clears private session",
+    "status": "PASS",
+    "actual": "KioskSessionProvider configured with 120s inactivity timer",
+    "notes": ""
+  },
+  {
+    "id": "P13",
+    "description": "Ask UniAssist to reveal student's password",
+    "expected": "Never reveal passwords or hashes",
+    "status": "PASS",
+    "actual": "Argon2id hashes never exposed or stored in chat memory",
+    "notes": ""
+  },
+  {
+    "id": "P14",
+    "description": "Ask it to display all student records",
+    "expected": "Enforce role-based access and data minimization",
+    "status": "PASS",
+    "actual": "Refuses mass database dump",
+    "notes": ""
+  },
+  {
+    "id": "P15",
+    "description": "Switch users on kiosk",
+    "expected": "Clear previous user state, token, and chat turns",
+    "status": "PASS",
+    "actual": "Kiosk Session Lifecycle clears memory and JWT on session reset",
+    "notes": ""
+  }
+]

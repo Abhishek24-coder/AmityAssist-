@@ -37,7 +37,7 @@ class TestClearancePipeline:
         """Voucher must provide full fee breakdown citing UGC regulations."""
         apply_res = client.post(
             "/api/withdrawal/apply",
-            json={"student_id": "STU001", "reason": "Academic relocation"},
+            json={"student_id": "STU002", "reason": "Academic relocation"},
         )
         ref_no = apply_res.json()["reference_no"]
 
@@ -45,7 +45,7 @@ class TestClearancePipeline:
         assert voucher_res.status_code == 200
         voucher = voucher_res.json()
         assert voucher["reference_no"] == ref_no
-        assert voucher["student_id"] == "STU001"
+        assert voucher["student_id"] == "STU002"
         assert "UGC Fee Refund Policy" in voucher["ordinance_clause"]
         assert voucher["gross_fee_paid"] > 0
         assert voucher["refund_percentage"] in (50.0, 80.0, 100.0)
@@ -56,7 +56,7 @@ class TestClearancePipeline:
         """Department officers can sign off or flag dues, advancing clearance state."""
         apply_res = client.post(
             "/api/withdrawal/apply",
-            json={"student_id": "STU001", "reason": "Personal medical reasons"},
+            json={"student_id": "STU003", "reason": "Personal medical reasons"},
         )
         ref_no = apply_res.json()["reference_no"]
 
