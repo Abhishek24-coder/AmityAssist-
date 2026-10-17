@@ -43,55 +43,72 @@ class TtsService {
         (function(text, lang, rate, pitch) {
           if (!('speechSynthesis' in window)) return;
           window.speechSynthesis.cancel();
-          var utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = lang || 'en-IN';
-          utterance.rate = rate || 1.0;
-          utterance.pitch = pitch || 1.0;
-          
-          var voices = window.speechSynthesis.getVoices() || [];
-          var targetLang = (lang || 'en-IN').toLowerCase();
-          var preferred = null;
-
-          if (targetLang.startsWith('hi')) {
-            preferred = voices.find(function(v) {
-              var vl = (v.lang || '').toLowerCase();
-              var vn = (v.name || '').toLowerCase();
-              return vl === 'hi-in' || vl.startsWith('hi') ||
-                     vn.includes('hindi') || vn.includes('हिन्दी') ||
-                     vn.includes('swara') || vn.includes('madhur') ||
-                     vn.includes('kalpana') || vn.includes('hemant');
-            });
+          if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
           }
 
-          if (!preferred && (targetLang === 'en-in' || targetLang === 'hi-latn')) {
-            preferred = voices.find(function(v) {
-              var vl = (v.lang || '').toLowerCase();
-              var vn = (v.name || '').toLowerCase();
-              return vl === 'en-in' || vl === 'en_in' ||
-                     vn.includes('india') || vn.includes('neerja') ||
-                     vn.includes('prabhat') || vn.includes('ravi');
-            });
-          }
+          var doSpeak = function() {
+            var utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = lang || 'en-IN';
+            utterance.rate = rate || 1.0;
+            utterance.pitch = pitch || 1.0;
+            
+            var voices = window.speechSynthesis.getVoices() || [];
+            var targetLang = (lang || 'en-IN').toLowerCase();
+            var preferred = null;
 
-          if (!preferred) {
-            preferred = voices.find(function(v) {
-              return (v.lang || '').toLowerCase().startsWith(targetLang.split('-')[0]);
-            }) || voices.find(function(v) {
-              return (v.lang || '').toLowerCase().startsWith('en');
-            });
-          }
+            if (targetLang.startsWith('hi')) {
+              preferred = voices.find(function(v) {
+                var vl = (v.lang || '').toLowerCase().replace('_', '-');
+                var vn = (v.name || '').toLowerCase();
+                return vl === 'hi-in' || vl.startsWith('hi') ||
+                       vn.includes('hindi') || vn.includes('हिन्दी') ||
+                       vn.includes('swara') || vn.includes('madhur') ||
+                       vn.includes('kalpana') || vn.includes('hemant') ||
+                       vn.includes('google hindi');
+              });
+            } else if (targetLang === 'en-in' || targetLang === 'hi-latn') {
+              preferred = voices.find(function(v) {
+                var vl = (v.lang || '').toLowerCase().replace('_', '-');
+                var vn = (v.name || '').toLowerCase();
+                return vl === 'en-in' || vl.startsWith('en-in') ||
+                       vn.includes('india') || vn.includes('neerja') ||
+                       vn.includes('prabhat') || vn.includes('ravi');
+              });
+            }
 
-          if (preferred) utterance.voice = preferred;
+            if (!preferred && !targetLang.startsWith('hi')) {
+              preferred = voices.find(function(v) {
+                return (v.lang || '').toLowerCase().startsWith(targetLang.split('-')[0]);
+              }) || voices.find(function(v) {
+                return (v.lang || '').toLowerCase().startsWith('en');
+              });
+            }
 
-          utterance.onend = function() {
-            if (window._onUniAssistTtsEnd) window._onUniAssistTtsEnd();
+            if (preferred) utterance.voice = preferred;
+
+            utterance.onend = function() {
+              if (window._onUniAssistTtsEnd) window._onUniAssistTtsEnd();
+            };
+            utterance.onerror = function(e) {
+              console.warn('TTS error:', e);
+              if (window._onUniAssistTtsEnd) window._onUniAssistTtsEnd();
+            };
+
+            window.speechSynthesis.resume();
+            window.speechSynthesis.speak(utterance);
           };
-          utterance.onerror = function(e) {
-            console.warn('TTS error:', e);
-            if (window._onUniAssistTtsEnd) window._onUniAssistTtsEnd();
-          };
 
-          window.speechSynthesis.speak(utterance);
+          if (window.speechSynthesis.getVoices().length === 0) {
+            window.speechSynthesis.onvoiceschanged = function() {
+              window.speechSynthesis.onvoiceschanged = null;
+              doSpeak();
+            };
+            // Fallback timeout in case onvoiceschanged does not fire
+            setTimeout(doSpeak, 100);
+          } else {
+            doSpeak();
+          }
         })(${_escapeJsString(cleanText)}, '$lang', $rate, $pitch)
         """
       ]);
