@@ -62,7 +62,7 @@ class Settings:
 
     @property
     def is_ollama_enabled(self) -> bool:
-        return self.llm_provider.lower() == "ollama"
+        return self.llm_provider.lower() in ("ollama", "local")
 
     @property
     def llm_enabled(self) -> bool:

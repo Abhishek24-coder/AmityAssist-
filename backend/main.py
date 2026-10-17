@@ -28,11 +28,12 @@ async def lifespan(app: FastAPI):
     if settings.is_production and settings.jwt_secret_key == "change-me-in-production":
         raise RuntimeError("JWT_SECRET_KEY must be configured in production.")
     init_db()
-    try:
-        from backend.services.local_llm_service import ensure_ollama_daemon_running
-        ensure_ollama_daemon_running()
-    except Exception:
-        pass
+    if settings.is_ollama_enabled:
+        try:
+            from backend.services.local_llm_service import ensure_ollama_daemon_running
+            ensure_ollama_daemon_running()
+        except Exception:
+            pass
     yield
 
 
