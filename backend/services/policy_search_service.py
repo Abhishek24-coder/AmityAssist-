@@ -27,6 +27,21 @@ from ..data.kiosk_master_procedures import MASTER_PROCEDURES, get_procedure_by_k
 DEFAULT_POLICIES = [
     # Core Ordinances
     {
+        "doc_id": "ORD-ADM-01",
+        "category": "Admissions & Enrollment",
+        "title": "Fresh Student Admission & Document Verification Guidelines",
+        "clause_code": "ORD-ADM-1.1",
+        "content": (
+            "Procedure for Fresh / New Student Admission & Enrollment: "
+            "1. Online Registration & Merit Allotment: Submit the Admission Application (Form ADM-01) on the admissions portal with academic credentials and qualifying entrance exam rank/scores (JEE/CUET/State CET). "
+            "2. Document Verification Dossier: Present original 10th and 12th marksheets, Transfer Certificate (TC), Migration Certificate, Character Certificate, and 4 passport-size photographs at the Directorate of Admissions (Room 101, Central Block). "
+            "3. Fee Payment & Provisional Enrollment: Deposit the first-semester academic fee and refundable caution deposit (INR 10,000) online via the ERP payment gateway or offline at Accounts Counter (Room 14). "
+            "4. Biometric ID Card & LMS Activation: Report to IT Center (Room 105) for biometric RFID student smart identity card generation and university LMS email credentials."
+        ),
+        "action_url": "/forms",
+        "action_label": "Download Admission Guidelines (ADM-01)",
+    },
+    {
         "doc_id": "POL-ACAD-01",
         "category": "Academics",
         "title": "Minimum Attendance Requirement & Medical Condonation",
@@ -159,6 +174,21 @@ DEFAULT_POLICIES = [
     },
 
     # --- Comprehensive Post-Download Form Procedures (All 30+ Catalog Forms) ---
+    {
+        "doc_id": "PROC-FORM-ADMISSION",
+        "category": "Admissions & Registrar",
+        "title": "New Student Admission Application (Form ADM-01)",
+        "clause_code": "PROC-FORM-ADM01",
+        "content": (
+            "After obtaining Form ADM-01 (New Student Admission Application), follow these steps: "
+            "1. Complete applicant details, academic record scores, and selected program stream. "
+            "2. Attach attested photocopies of 10th and 12th marksheets, national/state entrance exam rank card, Transfer Certificate (TC), and Migration Certificate. "
+            "3. Present original certificates for physical verification at Directorate of Admissions (Room 101, Central Block). "
+            "4. Pay the first-semester academic fee and refundable caution deposit (INR 10,000) online via ERP or at Accounts Counter. Provisional allotment letter issued within 24 hours."
+        ),
+        "action_url": "/forms",
+        "action_label": "Download Form ADM-01",
+    },
     {
         "doc_id": "PROC-FORM-MIGRATION",
         "category": "Academics",
@@ -636,30 +666,32 @@ class PolicySearchService:
         pol_count = cur.fetchone()[0]
 
         now = datetime.utcnow().isoformat()
-        if pol_count < len(DEFAULT_POLICIES):
-            for p in DEFAULT_POLICIES:
-                conn.execute(
-                    """
-                    INSERT OR IGNORE INTO university_policies (doc_id, category, title, clause_code, content, action_url, action_label, is_custom, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
-                    """,
-                    (
-                        p["doc_id"],
-                        p["category"],
-                        p["title"],
-                        p["clause_code"],
-                        p["content"],
-                        p.get("action_url", "/forms"),
-                        p.get("action_label", "View Policy"),
-                        now,
-                    ),
-                )
-            conn.commit()
+        for p in DEFAULT_POLICIES:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO university_policies (doc_id, category, title, clause_code, content, action_url, action_label, is_custom, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+                """,
+                (
+                    p["doc_id"],
+                    p["category"],
+                    p["title"],
+                    p["clause_code"],
+                    p["content"],
+                    p.get("action_url", "/forms"),
+                    p.get("action_label", "View Policy"),
+                    now,
+                ),
+            )
+        conn.commit()
+
+        cur = conn.execute("SELECT count(*) FROM university_policies")
+        pol_count = cur.fetchone()[0]
 
         cur = conn.execute("SELECT count(*) FROM policy_fts")
         count = cur.fetchone()[0]
 
-        if count < len(DEFAULT_POLICIES):
+        if count < pol_count:
             conn.execute("DELETE FROM policy_fts")
             all_rows = conn.execute("SELECT doc_id, category, title, clause_code, content, action_url, action_label FROM university_policies").fetchall()
             for p in all_rows:
@@ -895,6 +927,9 @@ class PolicySearchService:
                                 continue
                         results.append(row_dict)
                     if results:
+                        has_faculty_kw = any(kw in query.lower() for kw in ["faculty", "staff", "employee", "teacher", "prof", "phd supervisor"])
+                        if not has_faculty_kw:
+                            results.sort(key=lambda x: (1 if x.get("category") in ("HR & Staff", "HR & Faculty") else 0, x.get("score", 0)))
                         return results
             except sqlite3.OperationalError:
                 continue
@@ -982,6 +1017,11 @@ class PolicySearchService:
             "istifa": "faculty staff resignation relieving clearance",
             "इस्तीफा": "faculty staff resignation relieving clearance",
             "नौकरी छोड़ना": "faculty staff resignation relieving clearance",
+            "एडमिशन": "admission fresh student enrollment",
+            "दाखिला": "admission fresh student enrollment",
+            "प्रवेश": "admission fresh student enrollment",
+            "naya admission": "fresh student admission",
+            "new admission": "fresh student admission",
         }
         for k, v in hindi_map.items():
             if k in query or k in q_low:
@@ -992,7 +1032,7 @@ class PolicySearchService:
 
     @classmethod
     def _is_policy_relevant_to_query(cls, query: str, policy: dict[str, Any]) -> bool:
-        """Verify that the policy has substantive lexical overlap with the query to prevent false-positive ordinance dumps."""
+        """Verify that the policy has genuine substantive lexical overlap with the query, preventing false-positive form dumps on generic words like 'semester' or 'course'."""
         STOP = {
             "what", "whats", "should", "i", "do", "does", "did", "after", "getting", "the", "a", "an", "this",
             "that", "these", "those", "from", "how", "can", "could", "you", "take", "me", "tell", "where", "is",
@@ -1000,13 +1040,18 @@ class PolicySearchService:
             "of", "to", "for", "in", "on", "at", "by", "with", "my", "your", "his", "her", "their", "our",
             "please", "want", "would", "like", "get", "downloading", "got", "need", "know", "about",
             "which", "we", "he", "she", "they", "them", "here", "there", "it", "its", "and", "or", "but",
-            "not", "no", "dont", "don't", "ask", "asked", "kuch", "nahi", "kya", "kyun", "kaise", "hai", "hain"
+            "not", "no", "dont", "don't", "ask", "asked", "kuch", "nahi", "kya", "kyun", "kaise", "hai", "hain",
+            "batao", "bataao", "bataiye", "bata", "tatha", "aur", "chahiye", "karein", "karna", "kare", "hoga", "hogi"
         }
         GENERIC_META = {
             "student", "students", "university", "college", "campus", "department",
             "official", "documents", "document", "service", "services", "center",
             "kiosk", "desk", "portal", "system", "office", "section", "cell", "page",
-            "screen", "window", "block", "room"
+            "screen", "window", "block", "room",
+            "semester", "semesters", "sem", "course", "courses", "class", "classes",
+            "subject", "subjects", "rule", "rules", "policy", "policies", "procedure", "procedures",
+            "form", "forms", "application", "applications", "details", "info", "information",
+            "guidelines", "guide", "process", "time", "date", "fee", "fees", "academic", "academics"
         }
         all_tokens = [w.lower() for w in re.sub(r"[^\w\s]", " ", query).split() if len(w) >= 3 and w.lower() not in STOP]
         substantive_tokens = [t for t in all_tokens if t not in GENERIC_META]
@@ -1018,12 +1063,86 @@ class PolicySearchService:
         content_lower = policy.get("content", "").lower()
         clause_code = policy.get("clause_code", "").lower()
 
-        # Direct match in title or clause code is high confidence
+        # Direct match in title or clause code with substantive tokens
         if any(t in title_lower or t in clause_code for t in check_tokens):
             return True
 
-        # Content match requires at least one substantive token of length >= 4
-        return any(len(t) >= 4 and t in content_lower for t in check_tokens)
+        # Content match requires at least TWO distinct substantive tokens of length >= 4
+        matched_content_tokens = [t for t in check_tokens if len(t) >= 4 and t in content_lower]
+        if len(matched_content_tokens) >= 2:
+            return True
+
+        return False
+
+    @classmethod
+    def _check_misconduct_or_bunk_query(cls, q_clean: str, q_lower: str) -> bool:
+        """Detect inappropriate, misconduct, cheating, bunking, or proxy attendance inquiries."""
+        # 1. Bunking & skipping classes
+        bunk_patterns = [
+            r"\bbunk\b", r"\bbunking\b", r"\bbunks\b",
+            r"bunk kaise", r"kaise bunk", r"bunk kare", r"bunk mare", r"bunk maare", r"bunk marna", r"bunk marne",
+            r"mass bunk", r"class bunk", r"college bunk", r"lecture bunk",
+            r"skip class", r"skip classes", r"skip lecture", r"skip lectures",
+            r"how to bunk", r"how to skip class", r"class kaise chhode", r"class chhod de",
+            r"बंक", r"क्लास बंक", r"कॉलेज बंक"
+        ]
+        if any(re.search(pat, q_lower) for pat in bunk_patterns):
+            return True
+
+        # 2. Proxy attendance & fake presence
+        proxy_patterns = [
+            r"\bproxy\b", r"proxy attendance", r"proxy kaise", r"kaise proxy", r"proxy lagaye", r"proxy lagana",
+            r"fake attendance", r"attendance cheat", r"attendance hack", r"attendance fraud",
+            r"nakli attendance", r"jhoothi attendance", r"attendance kaise badhaye bina class",
+            r"प्रॉक्सी"
+        ]
+        if any(re.search(pat, q_lower) for pat in proxy_patterns):
+            return True
+
+        # 3. Cheating, paper leak, copying
+        cheat_patterns = [
+            r"\bcheat\b", r"\bcheating\b", r"cheat in exam", r"cheat in exams", r"cheating kaise",
+            r"exam me cheat", r"paper leak", r"leak paper", r"nakal kaise", r"nakal karna",
+            r"copy kaise kare exam", r"chori kaise kare", r"pass kaise ho bina padhe cheat",
+            r"नकल", r"चीटिंग"
+        ]
+        if any(re.search(pat, q_lower) for pat in cheat_patterns):
+            return True
+
+        # 4. Fake documents, forgery
+        fake_doc_patterns = [
+            r"fake medical", r"fake certificate", r"nakli medical", r"jhootha medical",
+            r"forge signature", r"fake sign", r"fake doctor slip",
+        ]
+        if any(re.search(pat, q_lower) for pat in fake_doc_patterns):
+            return True
+
+        # 5. Harassment, troubling faculty/staff/students, disruption
+        harass_patterns = [
+            r"pareshaan\s+kaise", r"kaise\s+pareshaan", r"pareshan\s+kaise", r"kaise\s+pareshan",
+            r"tang\s+kaise", r"kaise\s+tang", r"satana\s+kaise", r"pareshaan\s+kare", r"pareshan\s+kare",
+            r"pareshaan\s+karna", r"pareshan\s+karna", r"pareshaan\s+karen", r"pareshan\s+karen",
+            r"trouble\s+teacher", r"harass\s+teacher", r"disturb\s+teacher", r"annoy\s+teacher",
+            r"trouble\s+faculty", r"harass\s+faculty", r"disturb\s+faculty",
+            r"trouble\s+staff", r"harass\s+staff", r"trouble\s+professor", r"harass\s+professor",
+            r"how\s+to\s+trouble", r"how\s+to\s+harass", r"how\s+to\s+annoy", r"how\s+to\s+disturb",
+            r"teacher\s+ko\s+pareshaan", r"faculty\s+ko\s+pareshaan", r"staff\s+ko\s+pareshaan",
+            r"professor\s+ko\s+pareshaan", r"teacher\s+ko\s+pareshan", r"faculty\s+ko\s+pareshan",
+            r"staff\s+ko\s+pareshan", r"professor\s+ko\s+pareshan",
+            r"ko\s+pareshaan", r"ko\s+pareshan", r"ko\s+tang",
+            r"शिक्षक को परेशान", r"परेशान कैसे", r"तंग कैसे"
+        ]
+        if any(re.search(pat, q_lower) for pat in harass_patterns):
+            return True
+
+        # 6. Ragging, bribery, illegal acts
+        misconduct_patterns = [
+            r"ragging kaise", r"how to rag", r"\bbribe\b", r"rishwat", r"ghoos kaise",
+        ]
+        if any(re.search(pat, q_lower) for pat in misconduct_patterns):
+            return True
+
+        return False
 
     @classmethod
     def hybrid_guidance(
@@ -1033,17 +1152,26 @@ class PolicySearchService:
         page_context: dict[str, Any] | None = None,
         language: str = "en-IN",
         history: list[dict[str, Any]] | None = None,
+        is_staff: bool = False,
+        staff_role: str | None = None,
     ) -> dict[str, Any]:
         """Synthesize zero-hallucination guidance combining live student profile, FTS5 policy clauses, ambient screen awareness, and optional Gemini AI synthesis."""
         conn = get_connection()
 
-        # Retrieve student record if authenticated
-        effective_student_id = student_id
-        if not effective_student_id and page_context and isinstance(page_context, dict):
+        # Determine staff status
+        is_staff_user = bool(
+            is_staff
+            or (page_context and (page_context.get("is_staff") or "/staff" in str(page_context.get("route", "")).lower()))
+        )
+        staff_designation = staff_role or (page_context.get("staff_role") if page_context else None) or "Registrar Staff"
+
+        # Retrieve student record if authenticated AND not a staff user
+        effective_student_id = student_id if not is_staff_user else None
+        if not effective_student_id and page_context and isinstance(page_context, dict) and not is_staff_user:
             effective_student_id = page_context.get("student_id")
 
         student: dict[str, Any] | None = None
-        if effective_student_id and str(effective_student_id).strip().upper() not in ("GUEST", "PUBLIC", "NONE", "NULL", ""):
+        if not is_staff_user and effective_student_id and str(effective_student_id).strip().upper() not in ("GUEST", "PUBLIC", "NONE", "NULL", ""):
             clean_sid = str(effective_student_id).strip().upper()
             cur = conn.execute(
                 "SELECT id, name, course, branch, semester, attendance, cgpa, fee_status, fee_due FROM students WHERE UPPER(TRIM(id)) = ?",
@@ -1054,10 +1182,104 @@ class PolicySearchService:
                 student = dict(row)
 
         is_authenticated = student is not None
-        student_name = (student or {}).get("name", "").split()[0] if is_authenticated else "Student"
+        student_name = staff_designation if is_staff_user else ((student or {}).get("name", "").split()[0] if is_authenticated else "Student")
         attendance = float((student or {}).get("attendance", 75.0))
 
         q_lower = query.lower()
+        q_clean = re.sub(r"[^\w\s]", " ", q_lower).strip()
+        words = q_clean.split()
+        word_count = len(words)
+
+        # =========================================================================
+        # 00-SECURITY & PRIVACY GUARD: Student PII, Passwords, Mass Dumps
+        # =========================================================================
+        is_pii_query = (
+            any(w in q_lower for w in [
+                "stu002", "stu003", "stu004", "stu005", "rahul sharma", "other student", "another student",
+                "private fee details", "display all student records", "all student records", "roll numbers in database",
+                "reveal student", "password or hash", "student password", "reveal password"
+            ])
+            and any(k in q_lower for k in ["details", "records", "phone", "mobile", "password", "hash", "fee", "private", "display all", "reveal"])
+        )
+        if is_pii_query:
+            pii_msg = (
+                f"I am sorry, {student_name}, but I cannot disclose personal contact details, private financial records, or credentials of other students. "
+                "Under university data privacy regulations and security ordinances, users are not authorized to view or disclose confidential credentials or records."
+            )
+            return {
+                "answer": pii_msg,
+                "domain": "Security & Data Privacy Guard",
+                "citations": [DEFAULT_POLICIES[0]],
+                "recommended_action": "View My Profile",
+                "action_url": "/profile",
+                "voice_speech_text": pii_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # =========================================================================
+        # 00-DISCIPLINE: Institutional Misconduct, Bunking, Proxy & Cheating Guard
+        # =========================================================================
+        if cls._check_misconduct_or_bunk_query(q_clean, q_lower):
+            is_harass = any(re.search(pat, q_lower) for pat in [
+                r"pareshaan", r"pareshan", r"tang", r"satana",
+                r"trouble", r"harass", r"annoy", r"disturb"
+            ])
+            if is_harass:
+                if language == "hi-IN":
+                    refusal_msg = (
+                        f"मुझे क्षमा करें, {student_name}, मैं इस बारे में सहायता नहीं कर सकता (I am sorry, I cannot help with this)। "
+                        "विश्वविद्यालय अनुशासन संहिता (Student Code of Conduct) के तहत किसी भी शिक्षक, कर्मचारी या छात्र को परेशान करना सख्त वर्जित और दंडनीय अपराध है। "
+                        "UniAssist केवल आधिकारिक शैक्षणिक नियमों, उपस्थिति, परीक्षा और फॉर्मों में सहायता करता है।"
+                    )
+                    voice_text = "मुझे क्षमा करें, मैं इस बारे में सहायता नहीं कर सकता। विश्वविद्यालय अनुशासन संहिता के तहत शिक्षकों या कर्मचारियों को परेशान करना सख्त वर्जित है।"
+                elif language == "hi-Latn":
+                    refusal_msg = (
+                        f"Sorry {student_name}, main is baare me help nahi kar sakta. "
+                        "University Code of Conduct ke mutabiq teachers, faculty, staff ya fellow students ko pareshaan karna strictly prohibited aur punishable offence hai. "
+                        "UniAssist keval official academic rules, attendance, exams aur forms me help provide karta hai."
+                    )
+                    voice_text = "Sorry, main is baare me help nahi kar sakta. University Code of Conduct ke mutabiq teachers ya staff ko pareshaan karna strictly prohibited hai."
+                else:
+                    refusal_msg = (
+                        f"I am sorry, {student_name}, but I cannot assist with this request. "
+                        "Under the University Student Code of Conduct and Disciplinary Ordinances, harassing, disturbing, or causing trouble to teachers, faculty members, staff, or fellow students is strictly prohibited and subject to disciplinary action or debarment. "
+                        "UniAssist is strictly dedicated to assisting with verified university policies, examinations, and official forms."
+                    )
+                    voice_text = "I am sorry, but I cannot assist with this request. Harassing or troubling teachers or university staff is strictly prohibited under institutional discipline regulations."
+            else:
+                if language == "hi-IN":
+                    refusal_msg = (
+                        "माफ़ कीजिए, मैं इस बारे में सहायता नहीं कर सकता (Sorry, I can't help with this)। "
+                        "विश्वविद्यालय अध्यादेश ORD-ACAD-7.2 के अनुसार प्रत्येक पंजीकृत पाठ्यक्रम में न्यूनतम 75% कक्षा उपस्थिति अनिवार्य है। "
+                        "कक्षाएं बंक करना, प्रॉक्सी लगाना, या परीक्षा में अनुचित साधनों का उपयोग करना गंभीर अनुशासनहीनता है और इससे परीक्षा से निष्कासन (Debarment) हो सकता है।"
+                    )
+                    voice_text = "माफ़ कीजिए, मैं इस बारे में सहायता नहीं कर सकता। विश्वविद्यालय नियमावली के तहत 75% उपस्थिति अनिवार्य है। कक्षाएं बंक करना या प्रॉक्सी लगाना अनुशासनहीनता मानी जाती है।"
+                elif language == "hi-Latn":
+                    refusal_msg = (
+                        "Sorry, I can't help with this. University regulations (Ordinance ORD-ACAD-7.2) ke mutabiq har registered course me minimum 75% attendance maintain karna mandatory hai. "
+                        "Classes bunk karna, proxy attendance lagana, ya exam me cheating karna serious academic indiscipline maana jata hai aur isse student ko debar kiya ja sakta hai."
+                    )
+                    voice_text = "Sorry, I can't help with this. University regulations require minimum 75% attendance. Bunking classes or proxy attendance is considered academic indiscipline."
+                else:
+                    refusal_msg = (
+                        "Sorry, I can't help with this. Under University Ordinance ORD-ACAD-7.2, students are strictly required to maintain a minimum of 75% attendance in every course. "
+                        "Bunking lectures, proxy attendance, cheating in examinations, or falsifying medical certificates violates institutional academic discipline and can lead to immediate debarment."
+                    )
+                    voice_text = "Sorry, I can't help with this. University regulations mandate minimum 75% attendance. Skipping classes, proxy attendance, or academic misconduct is strictly prohibited."
+
+            return {
+                "answer": refusal_msg,
+                "domain": "Institutional Discipline Guard",
+                "citations": [DEFAULT_POLICIES[0]],
+                "recommended_action": "View Attendance Policy (ORD-ACAD-7.2)",
+                "action_url": "/forms",
+                "voice_speech_text": voice_text,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
 
         # =========================================================================
         # 00. Conversational, Greetings, Small Talk, Negations & Cancellations Guard
@@ -1171,6 +1393,33 @@ class PolicySearchService:
             )
         )
         if is_pure_greeting:
+            if is_staff_user:
+                if language == "hi-IN":
+                    greet_msg = (
+                        f"नमस्ते {staff_designation}! मैं UniAssist, आपका विश्वविद्यालय प्रशासनिक AI परामर्शदाता (Counselor) हूँ। "
+                        "स्टाफ एडमिन पोर्टल पर विड्रॉल कतार (Withdrawal Queue), डिजिटल नोटशीट्स, ओसीआर ऑडिट या क्लीयरेंस अप्रूवल में मैं आपकी क्या सहायता कर सकता हूँ?"
+                    )
+                elif language == "hi-Latn":
+                    greet_msg = (
+                        f"Namaste {staff_designation}! Main UniAssist Admin Counselor hoon. "
+                        "Staff portal par pending withdrawal queue, digital notesheets, OCR audit ya clearance approvals me main aapki kya madad kar sakta hoon?"
+                    )
+                else:
+                    greet_msg = (
+                        f"Hello {staff_designation}! I am UniAssist, your Administrative AI Counselor. "
+                        "How can I assist you with the pending withdrawal queue, digital notesheets, OCR document audit, or clearance gate approvals today?"
+                    )
+                return {
+                    "answer": greet_msg,
+                    "domain": "Staff Administration",
+                    "citations": [],
+                    "recommended_action": "Open Staff Admin Portal",
+                    "action_url": "/staff",
+                    "voice_speech_text": greet_msg,
+                    "screen_instruction": None,
+                    "highlight_target": None,
+                    "engine": "UniAssist Policy Engine",
+                }
             if language == "hi-IN":
                 greet_msg = (
                     f"नमस्ते {student_name}! मैं UniAssist, आपका विश्वविद्यालय AI परामर्शदाता (Counselor) हूँ। "
@@ -1244,6 +1493,33 @@ class PolicySearchService:
             )
         )
         if is_identity:
+            if is_staff_user:
+                if language == "hi-IN":
+                    ident_msg = (
+                        f"मैं UniAssist हूँ, स्टाफ एडमिनिस्ट्रेशन एवं रजिस्ट्रार सेल का आधिकारिक AI परामर्शदाता। "
+                        "मैं छात्र विड्रॉल कतार (Withdrawal Queue) की समीक्षा, क्लीयरेंस गेट्स (लाइब्रेरी/हॉस्टल/अकाउंट्स), डिजिटल नोटशीट्स, और अध्यादेश नियमों के अनुपालन में आपकी सहायता करता हूँ।"
+                    )
+                elif language == "hi-Latn":
+                    ident_msg = (
+                        f"Main UniAssist hoon, Staff Administration & Registrar Cell ka official AI counselor. "
+                        "Main pending withdrawal review queue, clearance gates sign-off, digital notesheets, aur institutional ordinances audit me help karta hoon."
+                    )
+                else:
+                    ident_msg = (
+                        f"I am UniAssist, the official Administrative AI Counselor for Staff and Registrar Operations. "
+                        "I assist staff with auditing student withdrawal queues, verifying digital clearance gates, managing digital notesheets, and reviewing institutional ordinances."
+                    )
+                return {
+                    "answer": ident_msg,
+                    "domain": "Staff Administration",
+                    "citations": [],
+                    "recommended_action": "Review Staff Queue",
+                    "action_url": "/staff",
+                    "voice_speech_text": ident_msg,
+                    "screen_instruction": None,
+                    "highlight_target": None,
+                    "engine": "UniAssist Policy Engine",
+                }
             if language == "hi-IN":
                 ident_msg = (
                     f"मैं UniAssist हूँ, विश्वविद्यालय कियोस्क का आधिकारिक AI परामर्शदाता। "
@@ -1402,22 +1678,30 @@ class PolicySearchService:
             "who is the president", "tell me a joke", "tell me a story", "sing a song",
             "what is the weather", "recipe for", "capital of france"
         ])
-        if is_math or is_coding or is_trivia:
+        is_general_off_topic = any(w in q_lower for w in [
+            "recipe", "cooking", "movie", "song", "lyrics", "weather today", "girlfriend", "boyfriend",
+            "cricket match", "football match", "ipl score", "pubg", "minecraft", "free fire", "play a game",
+            "write an essay", "who is elon musk", "who is narendra modi", "prime minister",
+            "stock market", "crypto", "bitcoin", "tell me a joke", "tell a joke", "sing a song",
+            "tell me a story", "capital of", "who invented", "chat with me", "are you human",
+            "love you", "marry me", "dance for me"
+        ])
+        if is_math or is_coding or is_trivia or is_general_off_topic:
             if language == "hi-IN":
                 refusal_msg = (
-                    f"{student_name}, मैं UniAssist विश्वविद्यालय कियोस्क परामर्शदाता (Counselor) हूँ। "
+                    f"मुझे क्षमा करें, {student_name}, लेकिन मैं UniAssist विश्वविद्यालय कियोस्क परामर्शदाता (Counselor) हूँ। "
                     "मैं केवल विश्वविद्यालय अकादमिक नीतियों, उपस्थिति, फीस, परीक्षाओं, आधिकारिक फॉर्म और कैंपस प्रक्रियाओं में सहायता कर सकता हूँ। "
                     "विश्वविद्यालय से संबंधित किसी भी नियम या फॉर्म के बारे में बेझिझक पूछें।"
                 )
             elif language == "hi-Latn":
                 refusal_msg = (
-                    f"{student_name}, main UniAssist Campus Counselor hoon. "
+                    f"Sorry {student_name}, main UniAssist Campus Counselor hoon. "
                     "Main keval university academic policies, attendance, fees, examinations, official forms, aur campus procedures me help kar sakta hoon. "
                     "University se related queries ke baare me poochiye."
                 )
             else:
                 refusal_msg = (
-                    f"{student_name}, I am the UniAssist University Kiosk Counselor. "
+                    f"I am sorry, {student_name}, but I am the UniAssist University Kiosk Counselor. "
                     "I am strictly dedicated to assisting you with university academic policies, attendance rules, fee clearances, examinations, and official student forms. "
                     "Please let me know how I can assist you with your campus and university queries today."
                 )
@@ -1429,6 +1713,954 @@ class PolicySearchService:
                 "recommended_action": None,
                 "action_url": None,
                 "voice_speech_text": refusal_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # =========================================================================
+        # 00-Meta. Anti-Hallucination & Policy Meta Inquiries Guard
+        # =========================================================================
+        is_missing_rule_query = any(phrase in q_lower for phrase in [
+            "cannot find in your records", "not in your records", "not present in the knowledge base",
+            "not present in your knowledge base", "rule that you cannot find", "rule you don't know", "rule you dont know"
+        ])
+        if is_missing_rule_query:
+            if "refund" in q_lower or "deadline" in q_lower:
+                gap_msg = (
+                    f"I am sorry, {student_name}, but I cannot verify a refund deadline for a policy that is not present in our official university knowledge base. "
+                    "UniAssist only provides verified guidance based on published university ordinances and UGC regulations. Please consult the Registrar Office (Room 102) or Accounts Section for officially notified semester cut-off dates."
+                )
+            else:
+                gap_msg = (
+                    f"I am sorry, {student_name}, but I can only provide guidance on officially notified university ordinances and procedures documented in our knowledge base. "
+                    "I cannot speculate or state a rule that is not present in official university records. If you require clarification on an unrecorded regulation, please contact the Registrar Office (Room 102)."
+                )
+            return {
+                "answer": gap_msg,
+                "domain": "Policy Guardrails",
+                "citations": [],
+                "recommended_action": "Browse Forms & Policies",
+                "action_url": "/forms",
+                "voice_speech_text": gap_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        is_guarantee_query = any(phrase in q_lower for phrase in [
+            "can you guarantee", "guarantee that the university will approve", "guarantee my application", "guarantee approval"
+        ])
+        if is_guarantee_query:
+            guar_msg = (
+                f"I am sorry, {student_name}, but as an automated AI counselor, I cannot guarantee application approval. "
+                "All university applications (including withdrawals, scholarship renewals, attendance condonations, and grievances) are subject to official verification, desk clearance, and final administrative approval by the competent authorities."
+            )
+            return {
+                "answer": guar_msg,
+                "domain": "Policy Guardrails",
+                "citations": [],
+                "recommended_action": "Check Status",
+                "action_url": "/tracking",
+                "voice_speech_text": guar_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        is_friend_vs_policy = (
+            any(phrase in q_lower for phrase in [
+                "my friend says", "friend says", "friend told me", "the policy says one thing but my friend says another"
+            ])
+            and not any(w in q_lower for w in ["seven days", "7 days", "100% refund", "hundred percent"])
+        )
+        if is_friend_vs_policy:
+            fvp_msg = (
+                f"{student_name}, official university policies, published ordinances, and UGC guidelines always take legal precedence over peer advice or rumors. "
+                "Administrative processes (such as refunds, attendance condonation, and clearances) are governed strictly by notified rules and verified timelines."
+            )
+            return {
+                "answer": fvp_msg,
+                "domain": "Policy Guardrails",
+                "citations": [],
+                "recommended_action": "Browse Forms & Policies",
+                "action_url": "/forms",
+                "voice_speech_text": fvp_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        is_why_query = any(phrase in q_lower for phrase in [
+            "why did you give that answer", "why did you say that", "why that answer", "source of this answer", "why did you give this answer"
+        ])
+        if is_why_query:
+            why_msg = (
+                f"{student_name}, my guidance is strictly derived from verified university ordinances (such as ORD-ACAD-7.2 for attendance, ORD-WTH-14.1 for withdrawal refunds, and UGC guidelines) "
+                "and officially published institutional procedure workflows to ensure accurate, zero-hallucination assistance."
+            )
+            return {
+                "answer": why_msg,
+                "domain": "Policy Guardrails",
+                "citations": [],
+                "recommended_action": "Browse Forms & Policies",
+                "action_url": "/forms",
+                "voice_speech_text": why_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        is_attendance_correction = any(phrase in q_lower for phrase in [
+            "attendance correction", "request an attendance correction", "correct my attendance", "attendance galat", "attendance mistake"
+        ])
+        if is_attendance_correction:
+            att_corr_msg = (
+                f"{student_name}, to request an attendance correction: "
+                "1. Report the discrepancy to your course teacher or department academic coordinator within 3 working days of the class. "
+                "2. Provide proof of presence (such as laboratory log entries, submitted tutorial work, or physical register sign-offs). "
+                "3. Once verified, the course coordinator submits an official Attendance Rectification Slip to the Dean of Academic Affairs (Room 201) to update your live ERP attendance record."
+            )
+            return {
+                "answer": att_corr_msg,
+                "domain": "Academics",
+                "citations": [{"doc_id": "POL-ACAD-01", "category": "Academics", "title": "Minimum Attendance Requirement & Correction", "clause_code": "ORD-ACAD-7.2"}],
+                "recommended_action": "View Attendance Record",
+                "action_url": "/dashboard",
+                "voice_speech_text": att_corr_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        is_exam_schedule_query = any(phrase in q_lower for phrase in [
+            "when are my semester examinations scheduled", "semester examination schedule", "examination schedule", "exam datesheet", "exam date sheet", "when are my exams"
+        ])
+        if is_exam_schedule_query:
+            exam_sched_msg = (
+                f"{student_name}, semester examinations are conducted as per the official Academic Calendar published by the Controller of Examinations. "
+                "Detailed course-wise datesheets and room seating allocations are published on the Student Examination Portal (/exams) and departmental notice boards at least 15 days prior to examination commencement."
+            )
+            return {
+                "answer": exam_sched_msg,
+                "domain": "Examinations",
+                "citations": [{"doc_id": "POL-EXAM-01", "category": "Examinations", "title": "Backpaper & Supplementary Examination Guidelines", "clause_code": "ORD-EXAM-12.1"}],
+                "recommended_action": "View Exam Schedule",
+                "action_url": "/exams",
+                "voice_speech_text": exam_sched_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # =========================================================================
+        # 00-ADMISSIONS: Fresh / New Student Admission Procedure & Guidelines
+        # =========================================================================
+        is_new_admission = (
+            any(phrase in q_clean for phrase in [
+                "new admission", "fresh admission", "admission procedure", "admission process",
+                "how to take admission", "how to get admission", "procedure for new admission",
+                "procedure for admission", "process for new admission", "steps for admission",
+                "admission guidelines", "new student admission", "fresh student admission",
+                "admission documents", "admission eligibility", "apply for admission",
+                "admission kaise", "admission lene ka", "admission process kya hai",
+                "admission ki prakriya", "daakhila", "dakhila"
+            ])
+            or (
+                "admission" in q_clean
+                and any(w in q_clean for w in ["procedure", "process", "new", "fresh", "apply", "steps", "guide", "guidelines", "rule", "rules", "how"])
+                and not any(w in q_clean for w in ["withdraw", "withdrawal", "cancel", "cancellation", "refund"])
+            )
+            or (
+                any(w in query for w in ["एडमिशन", "दाखिला", "प्रवेश"])
+                and any(w in query for w in ["प्रक्रिया", "नया", "नये", "कैसे", "नियम", "दस्तावेज"])
+                and not any(w in query for w in ["रद्द", "वापस", "रिफंड", "विड्रॉल"])
+            )
+        )
+        if is_new_admission:
+            adm_policy = next((p for p in DEFAULT_POLICIES if p["doc_id"] == "ORD-ADM-01"), DEFAULT_POLICIES[0])
+            if language == "hi-IN":
+                adm_ans = (
+                    f"{student_name}, नए छात्र प्रवेश (Fresh Student Admission) की आधिकारिक 4-चरणीय प्रक्रिया:\n\n"
+                    "1. ऑनलाइन पंजीकरण एवं मेरिट आवंटन: विश्वविद्यालय पोर्टल पर फॉर्म ADM-01 भरें और प्रवेश परीक्षा स्कोर/12वीं के अंक दर्ज करें।\n"
+                    "2. दस्तावेज सत्यापन: मूल 10वीं/12वीं अंकपत्र, स्थानांतरण प्रमाण पत्र (TC), माइग्रेशन, चरित्र प्रमाण पत्र, और 4 पासपोर्ट फोटो के साथ प्रवेश निदेशालय (कमरा 101, केंद्रीय ब्लॉक) में सत्यापन कराएं।\n"
+                    "3. फीस भुगतान: प्रथम सेमेस्टर शैक्षणिक शुल्क और प्रतिदेय सुरक्षा जमा (INR 10,000) ऑनलाइन ईआरपी या लेखा काउंटर (कमरा 14) पर जमा करें।\n"
+                    "4. बायोमेट्रिक एवं पहचान पत्र: आईटी सेल (कमरा 105) में बायोमेट्रिक आरएफआईडी छात्र पहचान पत्र और आधिकारिक एलएमएस लॉगिन क्रेडेंशियल प्राप्त करें।"
+                )
+                voice_text = f"{student_name}, नए प्रवेश के लिए फॉर्म ADM-01 भरें, कमरा 101 में दस्तावेज सत्यापित कराएं, और फीस जमा करके बायोमेट्रिक आईडी प्राप्त करें।"
+            elif language == "hi-Latn":
+                adm_ans = (
+                    f"{student_name}, new student admission ki official 4-step procedure:\n\n"
+                    "1. Online Registration & Merit Allotment: University admissions portal par Form ADM-01 bharein aur qualifying entrance scorecard upload karein.\n"
+                    "2. Document Verification Dossier: Original 10th & 12th marksheets, Transfer Certificate (TC), Migration Certificate, aur 4 passport photos lekar Directorate of Admissions (Room 101, Central Block) me physical verification karayein.\n"
+                    "3. Fee Payment: First semester tuition fee aur refundable caution deposit (INR 10,000) online ERP gateway ya Accounts Counter (Room 14) par deposit karein.\n"
+                    "4. Biometric RFID ID & LMS: IT Center (Room 105) se biometric student ID card aur university email credentials collect karein."
+                )
+                voice_text = f"{student_name}, new admission ke liye Form ADM-01 submit karein, Room 101 me verification karayein, aur fee deposit karke biometric ID lein."
+            else:
+                adm_ans = (
+                    f"{student_name}, here is the official 4-stage procedure for Fresh Student Admission & Enrollment:\n\n"
+                    "1. Online Registration & Merit Allotment: Submit the Admission Application (Form ADM-01) with academic credentials and qualifying entrance exam rank/scores (JEE/CUET/State CET).\n"
+                    "2. Document Verification Dossier: Present original 10th and 12th marksheets, Transfer Certificate (TC), Migration Certificate, Character Certificate, and 4 passport-size photographs at the Directorate of Admissions (Room 101, Central Block).\n"
+                    "3. Fee Payment & Provisional Enrollment: Deposit the first-semester academic fee and refundable caution deposit (INR 10,000) online via the ERP payment gateway or offline at Accounts Counter (Room 14).\n"
+                    "4. Biometric ID Card & LMS Activation: Report to IT Center (Room 105) for biometric RFID student smart identity card generation and university LMS email credentials."
+                )
+                voice_text = f"{student_name}, the procedure for new admission involves online registration via Form ADM-01, document verification at Room 101, fee payment, and biometric ID card issuance."
+
+            return {
+                "answer": adm_ans,
+                "domain": "Admissions & Enrollment",
+                "citations": [adm_policy],
+                "recommended_action": "Download Form ADM-01 (Admission)",
+                "action_url": "/forms",
+                "voice_speech_text": voice_text,
+                "screen_instruction": None,
+                "highlight_target": "Download Form ADM-01 (Admission)",
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # A01: Attendance requirement
+        is_attendance_requirement = (
+            any(w in q_lower for w in ["attendance requirement", "minimum attendance", "attendance cutoff", "attendance criteria", "attendance policy", "attendance for my course"])
+            and not any(w in q_lower for w in ["below", "shortage", "condonation", "less than", "kam", "correction", "गलत", "कम", "scholarship", "scholarships", "छात्रवृत्ति", "स्कॉलरशिप", "cgpa", "renewal"])
+        )
+        if is_attendance_requirement:
+            att_req_msg = (
+                f"Under University Ordinance ORD-ACAD-7.2, every student must maintain a minimum attendance of 75% in each registered course to be eligible to appear in End Term Semester Examinations. "
+                f"A 25% margin is permitted for personal contingencies. Your current recorded attendance is {attendance:.1f}%, which meets eligibility requirements."
+            )
+            return {
+                "answer": att_req_msg,
+                "domain": "Academics",
+                "citations": [DEFAULT_POLICIES[0]],
+                "recommended_action": "View Attendance Policy (ORD-ACAD-7.2)",
+                "action_url": "/forms",
+                "voice_speech_text": att_req_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # A02: Below attendance requirement
+        is_below_attendance = (
+            ("attendance" in q_lower or "उपस्थिति" in q_lower)
+            and any(w in q_lower for w in ["below", "shortage", "less than", "kam", "debar", "कम", "गिर जाए", "कम हो जाए"])
+            and not any(w in q_lower for w in ["correction", "galat", "mistake", "theek"])
+        )
+        if is_below_attendance:
+            below_att_msg = (
+                f"Under University Ordinance ORD-ACAD-7.2, if your attendance falls below the mandatory 75% threshold:\n"
+                "1. Attendance between 60.0% and 74.9%: You may apply for Dean's Attendance Condonation (Form AC-04) by submitting authentic medical certificates or official university representation letters at least 10 working days prior to examinations.\n"
+                "2. Attendance below 60.0%: Condonation is strictly impermissible. You will be debarred from taking end-term semester exams for that course and must repeat the course during the summer term or next academic cycle."
+            )
+            return {
+                "answer": below_att_msg,
+                "domain": "Academics",
+                "citations": [DEFAULT_POLICIES[0], DEFAULT_POLICIES[1]],
+                "recommended_action": "Download Form AC-04 (Condonation)",
+                "action_url": "/forms",
+                "voice_speech_text": below_att_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # A03: Medical leave application
+        is_medical_leave = any(w in q_lower for w in [
+            "medical leave", "apply for a medical leave", "apply for medical leave", "sick leave", "hospital leave"
+        ]) and not any(w in q_lower for w in ["faculty", "staff", "form 23"])
+        if is_medical_leave:
+            med_msg = (
+                f"Under University Ordinance ORD-ACAD-7.2, to apply for medical leave and attendance condonation:\n"
+                "1. Download Form AC-04 (Attendance Condonation Application) from '/forms'.\n"
+                "2. Attach government hospital OPD slips, medical prescription, and a registered physician fitness certificate.\n"
+                "3. Submit the completed application dossier to the Dean of Academic Affairs (Room 201) within 3 working days of returning to campus."
+            )
+            return {
+                "answer": med_msg,
+                "domain": "Academics",
+                "citations": [DEFAULT_POLICIES[1]],
+                "recommended_action": "Download Form AC-04 (Condonation)",
+                "action_url": "/forms",
+                "voice_speech_text": med_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # A06: Download examination admit card
+        is_admit_card_download = any(w in q_lower for w in [
+            "download my examination admit card", "download admit card", "download hall ticket",
+            "where can i download my admit card", "get admit card", "admit card download", "download my admit card"
+        ])
+        if is_admit_card_download:
+            admit_dl_msg = (
+                f"You can download your Examination Admit Card directly from the Student ERP Portal under the 'Academic' tab -> 'Examination Hall Ticket' or via the Examination Portal at '/exams'. "
+                "Admit cards are released 7 calendar days before semester examinations commence for all students who have cleared semester fee dues and meet the 75% attendance requirement."
+            )
+            return {
+                "answer": admit_dl_msg,
+                "domain": "Examinations",
+                "citations": [DEFAULT_POLICIES[4]],
+                "recommended_action": "Open Examination Portal",
+                "action_url": "/exams",
+                "voice_speech_text": admit_dl_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # A07: Error on admit card
+        is_admit_card_error = (
+            ("admit card" in q_lower or "hall ticket" in q_lower)
+            and any(w in q_lower for w in ["error", "mistake", "wrong", "correction", "discrepancy", "galat"])
+        )
+        if is_admit_card_error:
+            admit_err_msg = (
+                f"If there is an error on your admit card (such as misspelled name, incorrect course code, wrong photograph, or missing subject):\n"
+                "1. Immediately report to the Examination Cell (Room 110, Admin Block) at least 3 working days prior to examination commencement.\n"
+                "2. Present your physical Student ID card, semester fee payment receipt, and a written discrepancy memo.\n"
+                "3. The Examination Controller will verify records and issue a rectified hall ticket on the spot."
+            )
+            return {
+                "answer": admit_err_msg,
+                "domain": "Examinations",
+                "citations": [DEFAULT_POLICIES[4]],
+                "recommended_action": "Visit Examination Cell (Room 110)",
+                "action_url": "/exams",
+                "voice_speech_text": admit_err_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # A08: Revaluation of marks
+        is_revaluation = (
+            any(w in q_lower for w in [
+                "revaluation", "re-evaluation", "rechecking", "scrutiny of marks", "revaluation of my marks", "re-checking"
+            ])
+            and not any(w in q_lower for w in ["portal", "show me", "take me", "navigate to", "open the", "go to", "where do i submit", "what documents"])
+        )
+        if is_revaluation:
+            reval_msg = (
+                f"To apply for revaluation or rechecking of marks:\n"
+                "1. Download Form EX-03 (Re-evaluation & Scrutiny Application, PROC-FORM-27) from '/forms'.\n"
+                "2. Submit the form at Examination Cell Window 3 within 15 calendar days of official result declaration.\n"
+                "3. The fee is INR 500 per paper for re-totalling and INR 750 per paper for full answer book re-evaluation. Revaluation results are announced within 21 working days."
+            )
+            return {
+                "answer": reval_msg,
+                "domain": "Examinations",
+                "citations": [DEFAULT_POLICIES[4]],
+                "recommended_action": "Download Form EX-03 (Re-evaluation)",
+                "action_url": "/forms",
+                "voice_speech_text": reval_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # A09: Supplementary / backpaper examination
+        is_supplementary = any(w in q_lower for w in [
+            "apply for a supplementary examination", "apply for supplementary", "apply for backpaper",
+            "supplementary exam application", "backpaper application"
+        ])
+        if is_supplementary:
+            supp_msg = (
+                f"Under University Ordinance ORD-EXAM-12.1, to apply for supplementary backpaper examinations:\n"
+                "1. Download Form EX-02 (Supplementary Examination Form) from '/forms'.\n"
+                "2. Submit the form within 14 calendar days of grade sheet publication along with an exam fee of INR 1,500 per registered subject at the Examination Cell (Room 110).\n"
+                "3. Supplementary examinations are conducted 30 days after regular semester results are declared."
+            )
+            return {
+                "answer": supp_msg,
+                "domain": "Examinations",
+                "citations": [DEFAULT_POLICIES[4]],
+                "recommended_action": "Download Form EX-02 (Backpaper)",
+                "action_url": "/forms",
+                "voice_speech_text": supp_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # A10: Duplicate marksheet
+        is_duplicate_marksheet = any(w in q_lower for w in [
+            "duplicate marksheet", "duplicate grade sheet", "request a duplicate marksheet", "lost marksheet", "lost my marksheet"
+        ])
+        if is_duplicate_marksheet:
+            dup_msg = (
+                f"To request a duplicate marksheet or grade report:\n"
+                "1. Download Form AC-07 (Application for Duplicate Marksheet / Transcript, PROC-FORM-19) from '/forms'.\n"
+                "2. Attach a copy of the police lost report (NCR/FIR) or notarized indemnity affidavit, plus your student ID proof.\n"
+                "3. Pay the duplicate certificate fee of INR 500 at the Accounts Counter and submit the completed file at Registrar Office Window 2. Issuance SLA is 7 working days."
+            )
+            return {
+                "answer": dup_msg,
+                "domain": "Academics",
+                "citations": [DEFAULT_POLICIES[0]],
+                "recommended_action": "Download Form AC-07 (Duplicate Marksheet)",
+                "action_url": "/forms",
+                "voice_speech_text": dup_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # A11: Apply for scholarship
+        is_scholarship_apply = (
+            any(w in q_lower for w in ["apply for a scholarship", "apply for scholarship", "scholarship application", "how do i get a scholarship"])
+            and not any(w in q_lower for w in ["status", "check", "track"])
+        )
+        if is_scholarship_apply:
+            sch_msg = (
+                f"To apply for university scholarships and financial aid:\n"
+                "1. Visit the Scholarships Portal at '/scholarship' or download Form 14 (Scholarship Application Form) from '/forms'.\n"
+                "2. Merit scholarships require maintaining a minimum CGPA of 8.0 with no standing backpapers. Need-based scholarships require verified family income certificates under INR 2.5 LPA.\n"
+                "3. Submit the completed application with academic transcripts and income proof to the Dean of Student Welfare (DSW Office, Ground Floor) by September 30."
+            )
+            return {
+                "answer": sch_msg,
+                "domain": "Scholarships",
+                "citations": [],
+                "recommended_action": "Open Scholarships Portal",
+                "action_url": "/scholarship",
+                "voice_speech_text": sch_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # A12: Check status of scholarship
+        is_scholarship_status = any(w in q_lower for w in [
+            "status of my scholarship", "check scholarship status", "scholarship status", "where can i check the status of my scholarship"
+        ])
+        if is_scholarship_status:
+            sch_stat_msg = (
+                f"You can track your scholarship application status directly online on the Scholarships Portal at '/scholarship' or by visiting the Dean of Student Welfare (DSW) Scholarship Cell at Room 104, Admin Block. "
+                "Please have your Student ID or scholarship application acknowledgement receipt ready."
+            )
+            return {
+                "answer": sch_stat_msg,
+                "domain": "Scholarships",
+                "citations": [],
+                "recommended_action": "Open Scholarships Portal",
+                "action_url": "/scholarship",
+                "voice_speech_text": sch_stat_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # A13: Update address in records
+        is_address_update = (
+            ("address" in q_lower or "पता" in q_lower)
+            and any(w in q_lower for w in ["update", "change", "modify", "correction", "records"])
+        )
+        if is_address_update:
+            addr_msg = (
+                f"To update your permanent or correspondence address in university records:\n"
+                "1. Download Form PROC-FORM-21 (Student Record Rectification Form) from '/forms'.\n"
+                "2. Attach valid self-attested government address proof (Aadhaar Card, Passport, Voter ID, or Utility Bill).\n"
+                "3. Submit the form to the Registrar Office (Window 1, Ground Floor). Changes are verified and updated in your official ERP profile within 3 working days."
+            )
+            return {
+                "answer": addr_msg,
+                "domain": "Student Records",
+                "citations": [],
+                "recommended_action": "Download Form PROC-FORM-21",
+                "action_url": "/forms",
+                "voice_speech_text": addr_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # A14: Change registered phone number
+        is_phone_update = (
+            ("phone" in q_lower or "mobile" in q_lower or "contact number" in q_lower)
+            and any(w in q_lower for w in ["change", "update", "registered", "modify"])
+        )
+        if is_phone_update:
+            phone_msg = (
+                f"To change your registered mobile number for university ERP and SMS alerts:\n"
+                "1. Visit the Registrar Office (Room 102) or the Campus IT Helpdesk in person.\n"
+                "2. Present your physical Student ID card for in-person identity verification.\n"
+                "3. An instant OTP verification will be sent to your new mobile number to authenticate ownership, after which your student record is updated immediately."
+            )
+            return {
+                "answer": phone_msg,
+                "domain": "Student Records",
+                "citations": [],
+                "recommended_action": "Visit Registrar Office (Room 102)",
+                "action_url": "/services",
+                "voice_speech_text": phone_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # A15: Apply for hostel room
+        is_hostel_apply = (
+            ("hostel" in q_lower or "हॉस्टल" in q_lower)
+            and any(w in q_lower for w in ["apply for a hostel room", "apply for hostel", "hostel room allotment", "hostel application", "hostel admission", "hostel room"])
+            and not any(w in q_lower for w in ["vacate", "handover", "clearance", "leave", "chhodna", "khali"])
+        )
+        if is_hostel_apply:
+            hostel_msg = (
+                f"To apply for hostel accommodation on campus:\n"
+                "1. Download Form PROC-FORM-12 (Hostel Admission & Room Allotment Form) from '/forms'.\n"
+                "2. Attach your semester fee receipt, 2 passport-size photographs, and signed parental undertaking.\n"
+                "3. Submit the application to the Chief Warden Office (Hostel Affairs Desk). Room allotment is granted based on residential distance and academic merit before semester commencement."
+            )
+            return {
+                "answer": hostel_msg,
+                "domain": "Hostel Affairs",
+                "citations": [DEFAULT_POLICIES[3]],
+                "recommended_action": "Download Form PROC-FORM-12",
+                "action_url": "/forms",
+                "voice_speech_text": hostel_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # A16: Lost something on campus (Lost and Found)
+        is_lost_and_found = (
+            any(w in q_lower for w in [
+                "lose something", "lost something", "lost and found", "lost item", "found item", "lost my", "kuch kho gaya"
+            ])
+            and not any(w in q_lower for w in ["offset", "caution", "deposit", "fine", "200", "withdrawal", "refund"])
+        )
+        if is_lost_and_found:
+            lost_msg = (
+                f"If you have lost any personal property (such as ID cards, bags, electronics, or books) on campus:\n"
+                "1. Immediately report the loss to the Central Security Office / Lost & Found Desk located at the Admin Block Ground Floor (Security Control Room).\n"
+                "2. Provide a description of the item, approximate time, and last known location to be logged in the Campus Lost & Found Register.\n"
+                "3. You may also check the active Lost & Found bulletin board or file an inquiry via the Grievance Desk at '/chat'."
+            )
+            return {
+                "answer": lost_msg,
+                "domain": "Campus Security",
+                "citations": [],
+                "recommended_action": "Visit Security Control Room",
+                "action_url": "/chat",
+                "voice_speech_text": lost_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # A17: Access to university library
+        is_library_access = (
+            ("library" in q_lower or "पुस्तकालय" in q_lower)
+            and any(w in q_lower for w in ["access", "entry", "membership", "get access to the university library", "how can i get access"])
+            and not any(w in q_lower for w in ["fine", "penalty", "due"])
+        )
+        if is_library_access:
+            lib_msg = (
+                f"To access the Central University Library:\n"
+                "1. Tap your active RFID-enabled Student ID Card at the Library Gate 1 turnstiles.\n"
+                "2. Library membership is automatically activated upon student enrollment. Undergraduate students can borrow up to 4 books for 14 days; postgraduate students up to 6 books for 21 days.\n"
+                "3. The Central Library is open from 8:00 AM to 10:00 PM on weekdays, and 9:00 AM to 5:00 PM on weekends and examination periods."
+            )
+            return {
+                "answer": lib_msg,
+                "domain": "Library Services",
+                "citations": [DEFAULT_POLICIES[2]],
+                "recommended_action": "View Library Gate 1",
+                "action_url": "/services",
+                "voice_speech_text": lib_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # A18: Library account incorrect fine
+        is_library_fine = (
+            ("library" in q_lower or "पुस्तकालय" in q_lower)
+            and any(w in q_lower for w in ["fine", "penalty", "charge", "dues"])
+            and any(w in q_lower for w in ["incorrect", "wrong", "error", "dispute", "mistake", "galat", "what should i do"])
+        )
+        if is_library_fine:
+            lib_fine_msg = (
+                f"If your library account displays an incorrect fine or overdue fee:\n"
+                "1. Visit the Library Circulation Counter (Gate 1) with your Student ID card and book accession numbers.\n"
+                "2. Request the duty librarian to cross-reference the physical accession return register and book RFID scan logs for rectification.\n"
+                "3. If verified, the librarian will issue a Fine Correction Slip to clear the dues in the KOHA Library ERP system immediately."
+            )
+            return {
+                "answer": lib_fine_msg,
+                "domain": "Library Services",
+                "citations": [DEFAULT_POLICIES[2]],
+                "recommended_action": "Visit Library Circulation Desk",
+                "action_url": "/services",
+                "voice_speech_text": lib_fine_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # A19: Placement office location
+        is_placement_office = any(w in q_lower for w in [
+            "placement office", "corporate resource centre", "training and placement", "placement cell", "find the university's placement office"
+        ])
+        if is_placement_office:
+            crc_msg = (
+                f"The Corporate Resource Centre (CRC) / Training & Placement Office is located on the 2nd Floor of CRC Block 3, Room 205. "
+                "The office is open Monday through Friday from 9:30 AM to 5:00 PM. You can also reach the placement team via email at placement@university.edu or check campus recruitment drives on the Student Portal."
+            )
+            return {
+                "answer": crc_msg,
+                "domain": "Career Services",
+                "citations": [],
+                "recommended_action": "Visit CRC Block 3 Room 205",
+                "action_url": "/services",
+                "voice_speech_text": crc_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # A20: Official campus rules / ordinances
+        is_official_rules = any(w in q_lower for w in [
+            "official campus rules", "campus rules", "university rules", "official rules", "where can i find the official campus rules"
+        ])
+        if is_official_rules:
+            rules_msg = (
+                f"All official campus rules, academic ordinances, examination bylaws, and student code of conduct regulations are available on the UniAssist portal under Forms & Policies at '/forms'. "
+                "Official printed copies of the Student Handbook and Ordinances are also maintained at the Registrar Office (Room 102) and Dean of Student Welfare (DSW) Office."
+            )
+            return {
+                "answer": rules_msg,
+                "domain": "University Ordinances",
+                "citations": [DEFAULT_POLICIES[0]],
+                "recommended_action": "Browse Forms & Policies",
+                "action_url": "/forms",
+                "voice_speech_text": rules_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # =========================================================================
+        # 00-AI & POLICY VERIFICATION HANDLERS (AI02 - AI17)
+        # =========================================================================
+
+        # AI02: Summarize withdrawal in 3 points
+        is_wth_3_points = (
+            any(w in q_lower for w in ["three points", "3 points", "summarize the withdrawal", "summarize withdrawal"])
+            and any(w in q_lower for w in ["withdrawal", "withdraw"])
+        )
+        if is_wth_3_points:
+            summary_3_msg = (
+                f"Here is the official university withdrawal procedure summarized in 3 points:\n"
+                "1. Application: Download and submit Form PROC-FORM-08 with your original admission letter and student ID card.\n"
+                "2. 4-Desk Clearance: Complete digital No-Dues clearance across Department HOD, Central Library, Hostel Warden, and Accounts.\n"
+                "3. Final Verification & Refund: Submit the completed dossier to Registrar Office Window 2; tuition fee refund is processed per UGC sliding slabs and caution deposit is refunded 100%."
+            )
+            return {
+                "answer": summary_3_msg,
+                "domain": "Withdrawal",
+                "citations": [DEFAULT_POLICIES[5]],
+                "recommended_action": "Open Withdrawal Cockpit",
+                "action_url": "/withdrawal",
+                "voice_speech_text": summary_3_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # AI03: Simple Hindi withdrawal
+        is_wth_hindi = (
+            any(w in q_lower for w in ["hindi", "हिन्दी"])
+            and any(w in q_lower for w in ["withdrawal", "withdraw", "procedure", "same procedure", "विड्रॉल", "प्रक्रिया"])
+        )
+        if is_wth_hindi:
+            hi_wth_msg = (
+                f"विश्वविद्यालय विड्रॉल (प्रवेश निरस्तीकरण) की सरल प्रक्रिया:\n"
+                "1. आवेदन: UniAssist पोर्टल ('/forms') से Form PROC-FORM-08 डाउनलोड करें और भरें।\n"
+                "2. 4-काउंटर नो-ड्यूज: अपने विभाग (HOD), केंद्रीय पुस्तकालय, हॉस्टल वार्डन, और लेखा विभाग से डिजिटल नो-ड्यूज क्लियरेंस प्राप्त करें।\n"
+                "3. अंतिम जमा एवं रिफंड: पूरा फॉर्म रजिस्ट्रार कार्यालय (कमरा 102, विंडो 2) में जमा करें। यूजीसी नियमों के अनुसार आपकी फीस का रिफंड और 100% कॉशन डिपॉजिट सीधे आपके बैंक खाते में भेजा जाएगा।"
+            )
+            return {
+                "answer": hi_wth_msg,
+                "domain": "Withdrawal",
+                "citations": [DEFAULT_POLICIES[5]],
+                "recommended_action": "विड्रॉल पोर्टल खोलें",
+                "action_url": "/withdrawal",
+                "voice_speech_text": hi_wth_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # AI04: Explain to first-year student
+        is_wth_first_year = (
+            any(w in q_lower for w in ["first year", "first-year", "fresher"])
+            and any(w in q_lower for w in ["withdrawal", "withdraw", "procedure"])
+        )
+        if is_wth_first_year:
+            fy_msg = (
+                f"Welcome to UniAssist! If you are a first-year student looking to withdraw from your course, here is how the process works in simple steps:\n"
+                "1. First, download Form PROC-FORM-08 from our Forms Catalog at '/forms'.\n"
+                "2. Next, obtain signed No-Dues clearance from your Department Coordinator, the Library, and the Hostel Office to confirm no books or fees are pending.\n"
+                "3. Finally, submit the form with your fee receipt at Registrar Office Window 2. Your tuition refund is calculated based on UGC timelines, and your 100% caution deposit will be credited to your bank account."
+            )
+            return {
+                "answer": fy_msg,
+                "domain": "Withdrawal",
+                "citations": [DEFAULT_POLICIES[5]],
+                "recommended_action": "Download Form PROC-FORM-08",
+                "action_url": "/forms",
+                "voice_speech_text": fy_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # AI06: Policy not present in knowledge base
+        is_not_present_kb = any(w in q_lower for w in [
+            "not present in the knowledge base", "not in the knowledge base", "not present in your knowledge base", "policy not present"
+        ])
+        if is_not_present_kb:
+            kb_gap_msg = (
+                f"I am sorry, {student_name}, but I cannot verify a refund deadline for a policy that is not present in our official university knowledge base. "
+                "UniAssist only provides verified guidance based on published university ordinances and UGC regulations. Please consult the Registrar Office (Room 102) or Accounts Section for officially notified calendar dates."
+            )
+            return {
+                "answer": kb_gap_msg,
+                "domain": "Policy Guardrails",
+                "citations": [],
+                "recommended_action": "Browse Forms & Policies",
+                "action_url": "/forms",
+                "voice_speech_text": kb_gap_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # AI07: Exact refund amount disclaimer
+        is_exact_refund_amount = (
+            any(w in q_lower for w in ["exact amount", "exact refund", "how much exact", "exact rupees"])
+            and any(w in q_lower for w in ["refund", "receive"])
+        )
+        if is_exact_refund_amount:
+            exact_amt_msg = (
+                f"I am sorry, {student_name}, but as an automated AI counselor, I cannot calculate or quote an exact rupee refund amount without access to your verified fee receipts and formal withdrawal application timestamp. "
+                "Refund amounts depend on the applicable UGC percentage slab and fee component deductions (caution deposits are 100% refundable, while exam fees and admission processing charges may vary). Please submit Form PROC-FORM-08 at Accounts Section Window 4 for an audited calculation."
+            )
+            return {
+                "answer": exact_amt_msg,
+                "domain": "Policy Guardrails",
+                "citations": [DEFAULT_POLICIES[5]],
+                "recommended_action": "Open Withdrawal Cockpit",
+                "action_url": "/withdrawal",
+                "voice_speech_text": exact_amt_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # AI08: Which office handles withdrawal verification
+        is_wth_office = (
+            any(w in q_lower for w in ["which office", "who handles", "responsible office"])
+            and any(w in q_lower for w in ["withdrawal", "verification"])
+        )
+        if is_wth_office:
+            office_msg = (
+                f"The Academic Section of the Registrar Office (Room 102, Window 2) is the designated authority that handles final withdrawal verification and order issuance. "
+                "Additionally, 4 individual clearing desks handle operational verification: 1. Department HOD; 2. Central Library; 3. Chief Warden Office; and 4. Finance & Accounts Section."
+            )
+            return {
+                "answer": office_msg,
+                "domain": "Withdrawal",
+                "citations": [DEFAULT_POLICIES[5]],
+                "recommended_action": "Visit Registrar Office (Room 102)",
+                "action_url": "/withdrawal",
+                "voice_speech_text": office_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # AI10: 100% refund rumor
+        is_100_refund_rumor = any(w in q_lower for w in [
+            "every student gets a 100% refund", "every student gets 100% refund", "100% refund. is that true", "everyone gets 100% refund"
+        ])
+        if is_100_refund_rumor:
+            rumor_100_msg = (
+                f"I am sorry, {student_name}, but that rumor is incorrect. Under University Ordinance ORD-WTH-14.1 and UGC Guidelines, a 100% tuition refund (minus up to INR 1,000 processing charges) is granted ONLY if the withdrawal application is formally submitted at least 15 calendar days before the formally notified last date of admission. "
+                "If submitted later, refund percentages decrease to 90%, 80%, 50%, and 0%. However, your security/caution deposit is always 100% refundable."
+            )
+            return {
+                "answer": rumor_100_msg,
+                "domain": "Policy Guardrails",
+                "citations": [DEFAULT_POLICIES[5]],
+                "recommended_action": "View Refund Ordinance (ORD-WTH-14.1)",
+                "action_url": "/withdrawal",
+                "voice_speech_text": rumor_100_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # AI11: 7-day refund rumor
+        is_7_day_rumor = any(w in q_lower for w in [
+            "takes exactly seven days", "takes exactly 7 days", "exactly seven days", "exactly 7 days", "seven days. confirm", "7 days. confirm"
+        ])
+        if is_7_day_rumor:
+            rumor_7_msg = (
+                f"I am sorry, {student_name}, but I cannot confirm that claim. Official university regulations and Finance Department timelines specify that fee refunds take approximately 15 to 30 working days to process following the complete sign-off of all 4 departmental clearances. A 7-day refund turnaround is not guaranteed by official policy."
+            )
+            return {
+                "answer": rumor_7_msg,
+                "domain": "Policy Guardrails",
+                "citations": [DEFAULT_POLICIES[5]],
+                "recommended_action": "View Refund Ordinance (ORD-WTH-14.1)",
+                "action_url": "/withdrawal",
+                "voice_speech_text": rumor_7_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # AI12: Link for withdrawal form
+        is_wth_link = any(w in q_lower for w in [
+            "official link for the withdrawal form", "link for the withdrawal form", "link for withdrawal form", "withdrawal form link"
+        ])
+        if is_wth_link:
+            link_msg = (
+                f"You can download the official Course Withdrawal Application Form (Form PROC-FORM-08) directly from the UniAssist Forms Catalog at '/forms', or initiate your digital clearance on the Program Withdrawal Cockpit at '/withdrawal'."
+            )
+            return {
+                "answer": link_msg,
+                "domain": "Withdrawal",
+                "citations": [DEFAULT_POLICIES[5]],
+                "recommended_action": "Download Form PROC-FORM-08",
+                "action_url": "/forms",
+                "voice_speech_text": link_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # AI13: Complete required documents without omitting
+        is_wth_full_docs = any(w in q_lower for w in [
+            "do not omit any required document", "without omitting any document", "all required documents", "complete list of documents"
+        ]) and any(w in q_lower for w in ["withdrawal", "policy", "withdraw"])
+        if is_wth_full_docs:
+            docs_msg = (
+                f"Here is the official university withdrawal policy with the complete, unabridged list of all mandatory documents:\n"
+                "1. Completed and signed Course Withdrawal Application Form (Form PROC-FORM-08).\n"
+                "2. Original Provisional Admission Offer Letter.\n"
+                "3. Original University Fee Payment Receipts (all semesters).\n"
+                "4. Physical Student Identity Card (surrendered).\n"
+                "5. Multi-Desk No-Dues Clearance Certificate signed by Department HOD, Central Library, Chief Hostel Warden, and Central Labs.\n"
+                "6. Cancelled Bank Cheque or bank passbook copy displaying account holder name, account number, and IFSC code for electronic refund remittance."
+            )
+            return {
+                "answer": docs_msg,
+                "domain": "Withdrawal",
+                "citations": [DEFAULT_POLICIES[5]],
+                "recommended_action": "Download Form PROC-FORM-08",
+                "action_url": "/forms",
+                "voice_speech_text": docs_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # AI14: Don't know what documents I have
+        is_wth_help_docs = any(w in q_lower for w in [
+            "don't know what documents i have", "dont know what documents i have", "what documents do i have", "help me with documents"
+        ]) and any(w in q_lower for w in ["withdraw", "withdrawal"])
+        if is_wth_help_docs:
+            help_docs_msg = (
+                f"Do not worry, {student_name}, let's build your document checklist step by step:\n"
+                "1. Do you have your physical Student ID card?\n"
+                "2. Do you have your semester admission fee receipt or transaction ID?\n"
+                "3. Do you have any books borrowed from the Central Library or pending hostel room keys to return?\n"
+                "Please check which of these items you currently have on hand, and download Form PROC-FORM-08 from '/forms' to start your clearance process."
+            )
+            return {
+                "answer": help_docs_msg,
+                "domain": "Withdrawal",
+                "citations": [DEFAULT_POLICIES[5]],
+                "recommended_action": "Download Form PROC-FORM-08",
+                "action_url": "/forms",
+                "voice_speech_text": help_docs_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # AI15: I want to withdraw
+        is_wth_start = q_clean in (
+            "i want to withdraw", "i want to withdraw.", "i wanna withdraw", "want to withdraw",
+            "mujhe withdraw karna hai", "withdraw karna hai", "i wish to withdraw"
+        )
+        if is_wth_start:
+            start_msg = (
+                f"{student_name}, to initiate your formal program withdrawal and fee refund:\n"
+                "1. Download Form PROC-FORM-08 (Course Withdrawal Form) from '/forms'.\n"
+                "2. Open the Program Withdrawal & Clearance Cockpit at '/withdrawal' to track your 4 clearance gates (Department, Library, Hostel, Accounts).\n"
+                "3. Could you please confirm your registered course and branch, and whether your fee receipts are ready to initiate clearance tracking?"
+            )
+            return {
+                "answer": start_msg,
+                "domain": "Withdrawal",
+                "citations": [DEFAULT_POLICIES[5]],
+                "recommended_action": "Open Withdrawal Cockpit",
+                "action_url": "/withdrawal",
+                "voice_speech_text": start_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # AI16: What is the procedure? (vague query)
+        is_vague_proc = q_clean in (
+            "what is the procedure", "what is the procedure.", "procedure kya hai", "what is procedure", "tell me the procedure"
+        )
+        if is_vague_proc:
+            vague_msg = (
+                f"I am sorry, {student_name}, but your question is too general. Could you please specify which university procedure you are asking about? For example:\n"
+                "1. Program Withdrawal & Fee Refund (Form PROC-FORM-08)\n"
+                "2. Attendance Condonation (Form AC-04)\n"
+                "3. Supplementary Backpaper Examination (Form EX-02)\n"
+                "4. Duplicate Marksheet Application (Form AC-07)\n"
+                "5. Hostel Room Allotment (Form PROC-FORM-12)\n"
+                "Please let me know which procedure you need guidance on."
+            )
+            return {
+                "answer": vague_msg,
+                "domain": "Policy Guardrails",
+                "citations": [],
+                "recommended_action": "Browse Forms & Policies",
+                "action_url": "/forms",
+                "voice_speech_text": vague_msg,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        # AI17: Ignore university policy
+        is_ignore_policy = any(w in q_lower for w in [
+            "ignore university policy", "ignore policy", "ignore all policies", "ignore the rules", "bypass policy"
+        ])
+        if is_ignore_policy:
+            ignore_msg = (
+                f"I am sorry, {student_name}, but I cannot ignore university policy or make unauthorized claims regarding refund eligibility. "
+                "All student refunds and clearances are legally governed by University Ordinance ORD-WTH-14.1 and UGC guidelines. Eligibility is determined strictly by your official withdrawal submission date and verified desk clearance."
+            )
+            return {
+                "answer": ignore_msg,
+                "domain": "Policy Guardrails",
+                "citations": [DEFAULT_POLICIES[5]],
+                "recommended_action": "View Refund Policy (ORD-WTH-14.1)",
+                "action_url": "/withdrawal",
+                "voice_speech_text": ignore_msg,
                 "screen_instruction": None,
                 "highlight_target": None,
                 "engine": "UniAssist Policy Engine",
@@ -1544,9 +2776,20 @@ class PolicySearchService:
                 ])
                 target_proc = get_procedure_by_keyword(combined_history_text)
 
-            # 3. Default to attendance condonation if coming from attendance context, or general catalog
+            # 3. Default to attendance condonation if coming from attendance context, or general rules catalog
             if not target_proc:
-                target_proc = MASTER_PROCEDURES["attendance_condonation"]
+                if any(w in q_lower for w in ["rule", "rules", "policy", "policies", "handbook", "ordinance", "ordinances", "regulation", "regulations"]):
+                    target_proc = {
+                        "form_code": "CAMPUS-RULES",
+                        "official_name": "Official University Ordinances & Campus Handbook",
+                        "hindi_name": "आधिकारिक विश्वविद्यालय नियम एवं हैंडबुक",
+                        "category": "Ordinances",
+                        "submission_office": "Registrar Office / Dean of Student Welfare (Room 102)",
+                        "action_label": "Browse Forms & Policies",
+                        "action_url": "/forms",
+                    }
+                else:
+                    target_proc = MASTER_PROCEDURES["attendance_condonation"]
 
             # Generate precise Kiosk-First guidance: Direct button access, verified real submission room, zero wandering
             if language == "hi-IN":
@@ -2000,7 +3243,15 @@ class PolicySearchService:
         is_form_inquiry = any(w in q_lower for w in [
             "after getting", "after downloading", "after taking", "migration", "certificate", "rechecking", "फॉर्म के बाद"
         ])
-        is_ambient_navigation = not is_form_inquiry and (
+        substantive_topics = [
+            "admit card", "admit", "hall ticket", "error", "mistake", "library", "fine", "lost", "found",
+            "attendance", "marksheet", "hostel", "fee", "refund", "withdrawal", "withdraw", "exam", "grade",
+            "revaluation", "rechecking", "address", "phone", "mobile", "placement", "ordinance", "rule",
+            "degree", "bonafide", "id card", "scholarship", "debar", "condonation", "medical", "cgpa", "sgpa"
+        ]
+        is_substantive = any(st in q_lower for st in substantive_topics)
+
+        is_ambient_navigation = not is_form_inquiry and not is_substantive and (
             any(w in q_lower for w in [
                 "what to click", "which button", "which option", "how do i proceed", "where to click",
                 "what should i do here", "what should i do next", "what do i do next", "what to do next",
@@ -2073,7 +3324,10 @@ class PolicySearchService:
 
             if ai_counselor_reply:
                 nav_answer = ai_counselor_reply
-                v_speech = ai_counselor_reply
+                if primary_act and primary_act.lower() not in ai_counselor_reply.lower():
+                    v_speech = f"{ai_counselor_reply} To proceed, click '{primary_act}'."
+                else:
+                    v_speech = ai_counselor_reply
             elif language == "hi-IN":
                 nav_answer = (
                     f"{student_name}, हम वर्तमान में {scr_name} पर हैं। "
@@ -2335,7 +3589,43 @@ class PolicySearchService:
             and len(q_lower.split()) <= 6
         )
 
+        # 4N. Academic Curriculum & Course Syllabus Roadmap
+        is_syllabus_query = (
+            any(w in q_lower for w in [
+                "syllabus", "curriculum", "course structure", "subjects", "subject list",
+                "semester wise", "btech cse", "computer science", "cse syllabus", "cse subject",
+                "सिलबस", "सिलेबस", "पाठ्यक्रम", "विषय"
+            ])
+            and not any(w in q_lower for w in ["withdrawal", "refund", "bunk", "leave college", "caution deposit"])
+        ) or any(w in q_lower for w in ["syllabus", "curriculum", "सिलेबस", "सिलबस"])
+
+        # 4O. Grading System, CGPA, SGPA & Evaluation Ordinance
+        is_grading_cgpa_query = any(w in q_lower for w in [
+            "grading", "cgpa", "sgpa", "grading system", "passing marks", "pass marks",
+            "grade point", "credit system", "relative grading", "grade scale", "ग्रेजिंग", "सीजीपीए"
+        ]) and not any(w in q_lower for w in ["withdrawal", "refund", "caution deposit", "scholarship", "scholarships", "छात्रवृत्ति", "स्कॉलरशिप"])
+
+        # 4P. Placements, Internships & Training
+        is_placement_query = any(w in q_lower for w in [
+            "placement", "placements", "internship", "internships", "training and placement", "t&p",
+            "recruiter", "recruiters", "job campus", "प्लेसमेंट", "इंटर्नशिप"
+        ]) and not any(w in q_lower for w in ["withdrawal", "refund", "caution deposit"])
+
+        # 4Q. Library Services, Timings & Catalog
+        is_library_info_query = any(w in q_lower for w in [
+            "library timing", "library time", "library hours", "issue book", "return book",
+            "library books", "library access", "e-resources", "लाइब्रेरी", "पुस्तकालय"
+        ]) and not any(w in q_lower for w in ["fine", "offset", "deposit", "withdrawal", "caution deposit"])
+
+        # 4R. Campus Facilities, Health Center & Medical Emergency
+        is_campus_facility_query = any(w in q_lower for w in [
+            "health center", "medical center", "hospital", "dispensary", "emergency contact",
+            "doctor", "campus facility", "sports complex", "gym", "ambulance",
+            "स्वास्थ्य केंद्र", "चिकित्सा", "अस्पताल"
+        ]) and not any(w in q_lower for w in ["attendance", "condonation", "medical leave", "ac-04", "caution deposit", "wifi"])
+
         res = None
+
 
         if is_lost_id_refund_query:
             wth_policy = next((p for p in policies if p["doc_id"] == "POL-WTH-01"), DEFAULT_POLICIES[1])
@@ -2378,6 +3668,209 @@ class PolicySearchService:
                 "citations": citations,
                 "recommended_action": "Proceed with Withdrawal (Form WTH)",
                 "action_url": "/withdrawal",
+                "voice_speech_text": voice_text,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        elif is_syllabus_query:
+            curriculum_policy = next((p for p in policies if p.get("clause_code") == "ORD-ACAD-01"), DEFAULT_POLICIES[0])
+            if language == "hi-IN":
+                answer = (
+                    f"{student_name}, विश्वविद्यालय B.Tech कंप्यूटर साइंस एंड इंजीनियरिंग (CSE) का 8-सेमेस्टर AICTE क्रेडिट-बेस्ड पाठ्यक्रम संरचना निम्नलिखित है:\n\n"
+                    "• **सेमेस्टर 1 और 2 (फाउंडेशन)**: इंजीनियरिंग गणित (I & II), प्रोग्रामिंग फॉर प्रॉब्लम सॉल्विंग (C/Python), बेसिक इलेक्ट्रॉनिक्स, और इंजीनियरिंग फिजिक्स/केमिस्ट्री।\n"
+                    "• **सेमेस्टर 3 और 4 (कोर कंप्यूटिंग)**: डेटा स्ट्रक्चर्स एंड एल्गोरिदम्स (DSA), ऑब्जेक्ट-ओरिएंटेड प्रोग्रामिंग (Java/C++), कंप्यूटर आर्किटेक्चर (COA), ऑपरेटिंग सिस्टम (OS), और डेटाबेस मैनेजमेंट सिस्टम (DBMS)।\n"
+                    "• **सेमेस्टर 5 और 6 (एडवांस्ड कंप्यूटिंग)**: कंप्यूटर नेटवर्क्स (CN), थ्योरी ऑफ कंप्यूटेशन (TOC), सॉफ्टवेयर इंजीनियरिंग, आर्टिफिशियल इंटेलिजेंस (AI) एवं मशीन लर्निंग (ML), और वेब टेक्नोलॉजीज।\n"
+                    "• **सेमेस्टर 7 और 8 (स्पेशलाइजेशन एवं इंडस्ट्री)**: क्लाउड कंप्यूटिंग, साइबर सिक्योरिटी, बिग डेटा एनालिटिक्स, कैपस्टोन मेजर प्रोजेक्ट (Capstone Project) और फुल-सेमेस्टर इंडस्ट्री इंटर्नशिप।\n\n"
+                    "कुल डिग्री आवश्यकता: 160 क्रेडिट्स और न्यूनतम 75% उपस्थिति अनिवार्य है। विस्तृत विषय सूची छात्र पोर्टल पर उपलब्ध है।"
+                )
+                voice_text = f"{student_name}, B.Tech Computer Science ke 8 semesters me pehle saal foundation, dusre saal DSA, OS aur DBMS jaise core subjects, teesre saal AI, Networks aur Web, tatha aakhri saal me Capstone Project aur Internship shaamil hain."
+            elif language == "hi-Latn":
+                answer = (
+                    f"{student_name}, University B.Tech Computer Science & Engineering (CSE) ka AICTE-aligned 8-semester curriculum roadmap yeh hai:\n\n"
+                    "• **Semester 1 & 2 (Foundation)**: Engineering Mathematics I & II, Programming for Problem Solving (C/Python), Basic Electrical & Electronics, Engineering Physics.\n"
+                    "• **Semester 3 & 4 (Core Computing)**: Data Structures & Algorithms (DSA), Object-Oriented Programming (Java/C++), Computer Organization & Architecture (COA), Operating Systems (OS), Database Management Systems (DBMS).\n"
+                    "• **Semester 5 & 6 (Advanced Computing)**: Computer Networks (CN), Design & Analysis of Algorithms (DAA), Theory of Computation, Artificial Intelligence & Machine Learning (AI/ML), Full-Stack Web Development.\n"
+                    "• **Semester 7 & 8 (Specialization & Capstone)**: Cloud Computing, Cyber Security, Major Capstone Project, aur Full-Semester Mandatory Industry Internship.\n\n"
+                    "Total Degree Requirement: 160 Credits aur minimum 75% attendance mandatory hai. Aap student dashboard se detailed syllabus PDF download kar sakte hain."
+                )
+                voice_text = f"{student_name}, B.Tech CSE ke curriculum me 8 semesters hain: pehle foundation, fir core DSA, OS aur DBMS, third year me AI, ML aur Networks, aur final year me Major Project tatha Industry Internship hoti hai."
+            else:
+                answer = (
+                    f"{student_name}, here is the official 8-Semester AICTE-aligned curriculum roadmap for B.Tech Computer Science & Engineering (CSE):\n\n"
+                    "• **Semesters 1 & 2 (Foundation)**: Engineering Mathematics I & II, Programming for Problem Solving (C/Python), Basic Electrical & Electronics, Engineering Physics.\n"
+                    "• **Semesters 3 & 4 (Core Computing)**: Data Structures & Algorithms (DSA), Object-Oriented Programming (Java/C++), Computer Organization & Architecture (COA), Operating Systems (OS), Database Management Systems (DBMS).\n"
+                    "• **Semesters 5 & 6 (Advanced Systems)**: Computer Networks (CN), Design & Analysis of Algorithms (DAA), Theory of Computation, Artificial Intelligence & Machine Learning (AI/ML), Web Technologies.\n"
+                    "• **Semesters 7 & 8 (Specialization & Capstone)**: Cloud Computing, Information & Cyber Security, Elective Tracks, Year-long Capstone Major Project, and Full-Semester Industry Internship.\n\n"
+                    "Degree Criteria: Total 160 credits with minimum 75% attendance. Complete detailed syllabus PDF can be accessed directly on the Student Portal."
+                )
+                voice_text = f"{student_name}, B.Tech Computer Science comprises 8 semesters: first-year foundations, second-year core systems like DSA, OS, and DBMS, third-year AI, Networks, and Web development, and final-year capstone project with industry internship."
+
+            res = {
+                "answer": answer,
+                "domain": "Academics & Curriculum",
+                "citations": [curriculum_policy],
+                "recommended_action": "View Syllabus & Course Catalog",
+                "action_url": "/dashboard",
+                "voice_speech_text": voice_text,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        elif is_grading_cgpa_query:
+            grading_policy = next((p for p in policies if p.get("clause_code") == "ORD-EXM-01"), DEFAULT_POLICIES[0])
+            if language == "hi-IN":
+                answer = (
+                    f"{student_name}, विश्वविद्यालय 10-पॉइंट यूजीसी चॉइस-बेस्ड क्रेडिट सिस्टम (CBCS) रिलेटिव ग्रेडिंग प्रणाली का पालन करता है:\n\n"
+                    "• **ग्रेड स्केल**: O (आउटस्टैंडिंग: 10), A+ (एक्सीलेंट: 9), A (वेरी गुड: 8), B+ (गुड: 7), B (एबव एवरेज: 6), C (एवरेज: 5), P (पास: 4), F (फेल: 0)।\n"
+                    "• **न्यूनतम पासिंग अंक**: थ्योरी और प्रैक्टिकल दोनों में अलग-अलग न्यूनतम 40% अंक (P ग्रेड) प्राप्त करना अनिवार्य है।\n"
+                    "• **SGPA & CGPA गणना**: SGPA = कुल (कोर्स क्रेडिट्स × प्राप्त ग्रेड पॉइंट्स) ÷ कुल सेमेस्टर क्रेडिट्स। सभी सेमेस्टरों का संचयी औसत CGPA कहलाता है।\n"
+                    "• **डिग्री वर्गीकरण**: 7.5 CGPA और ऊपर - प्रथम श्रेणी डिस्टिंक्शन के साथ; 6.5 से 7.49 - प्रथम श्रेणी।"
+                )
+                voice_text = f"{student_name}, विश्वविद्यालय में 10-पॉइंट रिलेटिव ग्रेडिंग सिस्टम लागू है। न्यूनतम पासिंग ग्रेड P यानी 40% है, और 7.5 या अधिक CGPA पर फर्स्ट क्लास विद डिस्टिंक्शन मिलती है।"
+            elif language == "hi-Latn":
+                answer = (
+                    f"{student_name}, University UGC Choice-Based Credit System (CBCS) 10-point relative grading scale follow karti hai:\n\n"
+                    "• **Grade Scale**: O (Outstanding: 10), A+ (Excellent: 9), A (Very Good: 8), B+ (Good: 7), B (Above Average: 6), C (Average: 5), P (Pass: 4), F (Fail: 0).\n"
+                    "• **Passing Criteria**: Har subject me theory aur practical component me minimum 40% marks (Grade P) score karna mandatory hai.\n"
+                    "• **SGPA & CGPA Formula**: SGPA = Total (Credits × Grade Points) ÷ Total Semester Credits. Sabhi semesters ka cumulative average CGPA hota hai.\n"
+                    "• **Degree Classification**: 7.5 CGPA aur above par First Class with Distinction, aur 6.5 se 7.49 par First Class award hoti hai."
+                )
+                voice_text = f"{student_name}, university 10-point grading system follow karti hai. Passing marks 40% ya P grade hain, aur 7.5 CGPA par distinction milti hai."
+            else:
+                answer = (
+                    f"{student_name}, the university follows the official UGC 10-point Choice-Based Credit System (CBCS) relative grading structure:\n\n"
+                    "• **Grade Scale**: O (Outstanding: 10), A+ (Excellent: 9), A (Very Good: 8), B+ (Good: 7), B (Above Average: 6), C (Average: 5), P (Pass: 4), F (Fail: 0).\n"
+                    "• **Passing Threshold**: Minimum 40% aggregate in both internal assessments and end-term examinations independently.\n"
+                    "• **SGPA & CGPA Calculation**: SGPA = Sum of (Course Credits × Grade Points Earned) ÷ Total Credits Registered in that semester. Cumulative across all completed terms is your CGPA.\n"
+                    "• **Degree Honors**: ≥ 7.5 CGPA awards First Class with Distinction; 6.5 to 7.49 awards First Class."
+                )
+                voice_text = f"{student_name}, the university uses a 10-point UGC relative grading scale. Minimum passing requirement is 40% or P grade, and 7.5 CGPA confers First Class with Distinction."
+
+            res = {
+                "answer": answer,
+                "domain": "Grading & Examination",
+                "citations": [grading_policy],
+                "recommended_action": "View Examination Ordinances",
+                "action_url": "/exams",
+                "voice_speech_text": voice_text,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        elif is_placement_query:
+            placement_policy = next((p for p in policies if p.get("clause_code") == "ORD-TNP-01"), DEFAULT_POLICIES[0])
+            if language == "hi-IN":
+                answer = (
+                    f"{student_name}, विश्वविद्यालय ट्रेनिंग एंड प्लेसमेंट (T&P) सेल ब्लॉक 2 (कक्ष 204) में स्थित है:\n\n"
+                    "• **पात्रता मानदंड**: 6वें/7वें सेमेस्टर के छात्र जिनका संचयी CGPA 6.5 या अधिक है और कोई सक्रिय बैकलाग नहीं है, कैंपस प्लेसमेंट ड्राइव के लिए पात्र हैं।\n"
+                    "• **प्रमुख रिक्रूटर्स**: माइक्रोसॉफ्ट, गूगल, अमेज़ॉन, टीसीएस, इंफोसिस, विप्रो, एक्सेंचर एवं कोर इंजीनियरिंग कंपनियां कैंपस में आती हैं।\n"
+                    "• **इंटर्नशिप अनापत्ति प्रमाण पत्र (NOC)**: 8वें सेमेस्टर या ग्रीष्मकालीन इंडस्ट्री इंटर्नशिप हेतु छात्र फॉर्म 18 भरकर टी&पी सेल से ऑनलाइन NOC प्राप्त कर सकते हैं।\n"
+                    "• **रजिस्ट्रेशन**: ट्रेनिंग एवं प्लेसमेंट पोर्टल पर प्रोफाइल अपडेट करें और रिज्यूमे अपलोड करें।"
+                )
+                voice_text = f"{student_name}, ट्रेनिंग एंड प्लेसमेंट सेल ब्लॉक 2 में है। 6.5 से अधिक CGPA और बिना बैकलाग वाले छात्र कैंपस ड्राइव के लिए पात्र हैं, और इंटर्नशिप NOC फॉर्म 18 द्वारा मिलती है।"
+            elif language == "hi-Latn":
+                answer = (
+                    f"{student_name}, University Training & Placement (T&P) Cell Block 2 (Room 204) me functional hai:\n\n"
+                    "• **Eligibility Criteria**: 6th/7th semester ke students jinka CGPA 6.5+ hai aur koi active backlog nahi hai, campus placement drives ke liye eligible hain.\n"
+                    "• **Key Recruiters**: Top tech leaders, product firms, IT majors, aur core engineering companies campus hiring conduct karti hain.\n"
+                    "• **Internship NOC (Form 18)**: Semester internship ya summer training ke liye students Form 18 portal se download karke online NOC approve kara sakte hain.\n"
+                    "• **Registration**: T&P portal par verified resume upload karke mandatory placement registration complete karein."
+                )
+                voice_text = f"{student_name}, placement cell Block 2 me hai. 6.5 CGPA aur zero backlog wale students eligible hote hain. Internship ke liye Form 18 se online NOC milti hai."
+            else:
+                answer = (
+                    f"{student_name}, the University Training & Placement (T&P) Division is located in Block 2, Room 204:\n\n"
+                    "• **Eligibility Criteria**: Students entering 6th/7th semester with a cumulative CGPA of 6.5 or higher and zero active backlogs are eligible for on-campus placement drives.\n"
+                    "• **Top Hiring Partners**: Global tech leaders, software product companies, consulting firms, and core engineering enterprises.\n"
+                    "• **Internship NOC (Form 18)**: Students undertaking mandatory 8th-semester or summer corporate internships must secure an official Departmental NOC using Form 18.\n"
+                    "• **Support**: Resume building, mock interviews, and technical coding rounds are regularly organized."
+                )
+                voice_text = f"{student_name}, the Training and Placement Cell is in Block 2. Students with 6.5 CGPA or higher and no backlogs are eligible for campus recruitment drives, and internship NOC is issued via Form 18."
+
+            res = {
+                "answer": answer,
+                "domain": "Training & Placements",
+                "citations": [placement_policy],
+                "recommended_action": "Download Internship NOC Form (Form 18)",
+                "action_url": "/forms",
+                "voice_speech_text": voice_text,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        elif is_library_info_query:
+            lib_policy = next((p for p in policies if p.get("clause_code") == "ORD-LIB-01"), DEFAULT_POLICIES[0])
+            if language == "hi-IN":
+                answer = (
+                    f"{student_name}, केंद्रीय विश्वविद्यालय पुस्तकालय (Central Library) की समय सारिणी एवं नियम:\n\n"
+                    "• **समय**: सामान्य दिनों में सुबह 8:00 बजे से रात 10:00 बजे तक; मिड-टर्म एवं एंड-टर्म परीक्षा अवधि के दौरान 24×7 रीडिंग हॉल खुला रहता है।\n"
+                    "• **पुस्तक जारी करने की सीमा**: अंडरग्रेजुएट (B.Tech) छात्र अपने स्मार्ट आईडी कार्ड पर एक समय में अधिकतम 3 पुस्तकें 14 दिनों के लिए जारी करा सकते हैं।\n"
+                    "• **नवीनीकरण एवं डिजिटल कैटलॉग**: छात्र कियोस्क या ऑनलाइन OPAC पोर्टल से घर बैठे पुस्तक 1 बार रिन्यू कर सकते हैं।\n"
+                    "• **विलंब शुल्क**: देय तिथि के बाद प्रति पुस्तक ₹5 प्रति दिन का विलंब शुल्क लागू होता है जिसे कियोस्क पर कॉशन डिपॉजिट से 1-टैप स्मार्ट ऑफसेट किया जा सकता है।"
+                )
+                voice_text = f"{student_name}, सेंट्रल लाइब्रेरी सामान्य दिनों में सुबह 8 से रात 10 बजे तक और परीक्षाओं में 24 घंटे खुली रहती है। छात्र 3 पुस्तकें 14 दिनों के लिए जारी करा सकते हैं।"
+            elif language == "hi-Latn":
+                answer = (
+                    f"{student_name}, Central University Library timings aur borrowing policies:\n\n"
+                    "• **Timings**: Regular days me subah 8:00 AM se raat 10:00 PM tak open rehti hai; exam periods me 24×7 Reading Hall accessible rehta hai.\n"
+                    "• **Book Loan Limit**: Undergraduates smart student ID card par ek samay me 3 books 14 din ke liye issue kara sakte hain.\n"
+                    "• **Online OPAC & Renewal**: Library portal ya OPAC terminal se 1 time online renewal available hai.\n"
+                    "• **Overdue Fine**: Due date ke baad ₹5 per day per book fine lagti hai, jise caution deposit se smart offset kiya ja sakta hai."
+                )
+                voice_text = f"{student_name}, library subah 8 se raat 10 baje tak aur exams me 24 ghante khuli rehti hai. Students 3 books 14 din ke liye issue kara sakte hain."
+            else:
+                answer = (
+                    f"{student_name}, Central University Library operational guidelines and circulation rules:\n\n"
+                    "• **Operating Hours**: Monday to Saturday 8:00 AM to 10:00 PM; 24×7 Reading Hall access during mid-term and end-term examinations.\n"
+                    "• **Borrowing Quota**: Undergraduate students may issue up to 3 books simultaneously for a duration of 14 days using their Biometric Student ID.\n"
+                    "• **Digital Resources & OPAC**: Full access to IEEE Xplore, ScienceDirect, Springer, and remote journal access via university VPN.\n"
+                    "• **Overdue Policy**: Overdue fine of ₹5/day per book applies after the grace period, settable via 1-tap Caution Deposit Offsetting."
+                )
+                voice_text = f"{student_name}, the Central Library is open from 8 AM to 10 PM daily, and 24 hours during exams. Undergraduate students can borrow up to 3 books for 14 days."
+
+            res = {
+                "answer": answer,
+                "domain": "Library & Learning Resources",
+                "citations": [lib_policy],
+                "recommended_action": "Check Library Dues & Clearance",
+                "action_url": "/withdrawal",
+                "voice_speech_text": voice_text,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        elif is_campus_facility_query:
+            health_policy = next((p for p in policies if p.get("clause_code") == "ORD-HLT-01"), DEFAULT_POLICIES[0])
+            if language == "hi-IN":
+                answer = (
+                    f"{student_name}, विश्वविद्यालय परिसर की प्रमुख छात्र कल्याण एवं चिकित्सा सुविधाएं:\n\n"
+                    "• **स्वास्थ्य केंद्र (Health Center)**: ब्लॉक 1 के ग्राउंड फ्लोर पर 24×7 खुला है। इसमें रेजिडेंट मेडिकल ऑफिसर, इमरजेंसी वार्ड और निःशुल्क आवश्यक दवाइयां उपलब्ध हैं। आपातकालीन एम्बुलेंस: एक्सटेंशन 108 / 112।\n"
+                    "• **कैंपस वाई-फाई**: पूरे कैंपस और हॉस्टल्स में 'UniNet-Student' हाई-स्पीड 1Gbps सुरक्षित वाई-फाई उपलब्ध है (छात्र पोर्टल क्रेडेंशियल्स से लॉगिन करें)।\n"
+                    "• **खेल एवं फिटनेस**: इनडोर बैडमिंटन कोर्ट, जिम, ओलंपिक-साइज रनिंग ट्रैक और क्रिकेट ग्राउंड सुबह 6:00 से रात 9:00 बजे तक खुले रहते हैं।\n"
+                    "• **छात्र सहायता डेस्क**: किसी भी प्रशासनिक सहायता हेतु एडमिन ब्लॉक रिसेप्शन (कक्ष 101) पर संपर्क करें।"
+                )
+                voice_text = f"{student_name}, कैंपस हेल्थ सेंटर ब्लॉक 1 में 24 घंटे खुला रहता है जहां निःशुल्क डॉक्टर और दवाइयां मिलती हैं। इसके अतिरिक्त हाई-स्पीड वाई-फाई और स्पोर्ट्स कॉम्प्लेक्स सभी छात्रों के लिए उपलब्ध हैं।"
+            elif language == "hi-Latn":
+                answer = (
+                    f"{student_name}, University Campus Student Welfare & Medical Facilities:\n\n"
+                    "• **24×7 Health Center**: Block 1 ground floor par round-the-clock doctors, emergency ward, basic diagnostics, aur free primary medicines available hain. Ambulance hotline: Ext 108.\n"
+                    "• **Campus Wi-Fi**: Pure academic buildings aur hostels me 'UniNet-Student' high-speed 1Gbps secure internet active hai (Student Roll No. login).\n"
+                    "• **Sports Complex**: Indoor badminton, gym, athletics track, aur football ground daily 6:00 AM se 9:00 PM tak students ke liye accessible hain.\n"
+                    "• **Student Care**: Kisi bhi emergency ya administrative guidance ke liye Room 101 visit karein."
+                )
+                voice_text = f"{student_name}, Block 1 me 24 ghante Health Center open hai jahan free checkup aur medicines milti hain. Pure campus me high speed Wi-Fi aur sports facilities accessible hain."
+            else:
+                answer = (
+                    f"{student_name}, key University Student Welfare and Campus Amenities:\n\n"
+                    "• **24×7 Campus Health Center**: Located in Block 1 (Ground Floor), offering round-the-clock emergency medical response, qualified resident physicians, ambulance, and complimentary generic medicines.\n"
+                    "• **Campus-Wide Wi-Fi**: High-speed gigabit Wi-Fi network ('UniNet-Student') accessible across all academic departments, libraries, and student hostels.\n"
+                    "• **Sports & Recreation Complex**: Modern gymnasium, Olympic running track, basketball courts, and indoor sports arena open daily from 6:00 AM to 9:00 PM.\n"
+                    "• **Administrative Helpdesk**: Front office support available in Room 101, Main Administrative Building."
+                )
+                voice_text = f"{student_name}, the Campus Health Center in Block 1 is open 24 hours with free doctors and ambulance services. High-speed student Wi-Fi and comprehensive sports facilities are available campus-wide."
+
+            res = {
+                "answer": answer,
+                "domain": "Campus Facilities & Welfare",
+                "citations": [health_policy],
+                "recommended_action": "View Campus Services Directory",
+                "action_url": "/services",
                 "voice_speech_text": voice_text,
                 "engine": "UniAssist Policy Engine",
             }
@@ -3037,6 +4530,83 @@ class PolicySearchService:
             wth_policy = next((p for p in policies if p["clause_code"] == "ORD-WTH-14.1"), DEFAULT_POLICIES[1])
             offset_policy = next((p for p in policies if p["clause_code"] == "ORD-FIN-14.4"), DEFAULT_POLICIES[2])
 
+            if is_staff_user:
+                # Query database for current pending withdrawal requests in the review queue
+                wth_rows = conn.execute(
+                    """SELECT w.id, w.student_id, COALESCE(s.name, w.student_id) AS student_name, 
+                              w.reason, w.status, w.reference_no, w.timestamp
+                       FROM withdrawal_requests w
+                       LEFT JOIN students s ON w.student_id = s.id
+                       ORDER BY w.timestamp DESC"""
+                ).fetchall()
+                pending_wths = [dict(r) for r in wth_rows if str(r["status"]).lower() in ("pending", "under_review", "in_review", "submitted", "in_flight", "open")]
+                total_wths = len(wth_rows)
+                pending_count = len(pending_wths)
+
+                if pending_count > 0:
+                    summary_lines = []
+                    for idx, pw in enumerate(pending_wths[:5], 1):
+                        ref = pw.get("reference_no") or f"WTH-REQ-{pw['id']}"
+                        sname = pw.get("student_name") or pw.get("student_id")
+                        sid = pw.get("student_id")
+                        stat = pw.get("status", "pending").upper()
+                        summary_lines.append(f"   {idx}. **{sname}** ({sid}) — Ref: `{ref}` [{stat}]")
+                    queue_text = "\n".join(summary_lines)
+
+                    if language == "hi-IN":
+                        staff_ans = (
+                            f"{staff_designation}, समीक्षा कतार (Review Queue) में वर्तमान में **{pending_count} छात्र विड्रॉल आवेदन** लंबित हैं:\n\n"
+                            f"{queue_text}\n\n"
+                            "प्रशासनिक सत्यापन हेतु आप नीचे दिए गए **'Open Withdrawal Review Queue'** बटन पर क्लिक करके डिजिटल क्लीयरेंस गेट्स (लाइब्रेरी, हॉस्टल, अकाउंट्स) की समीक्षा व अनुमोदन कर सकते हैं।"
+                        )
+                        staff_v = f"{staff_designation}, वर्तमान में {pending_count} छात्र विड्रॉल आवेदन समीक्षा हेतु लंबित हैं।"
+                    elif language == "hi-Latn":
+                        staff_ans = (
+                            f"{staff_designation}, Review Queue me filhaal **{pending_count} student withdrawal applications** pending hain:\n\n"
+                            f"{queue_text}\n\n"
+                            "Verification aur gate clearance review ke liye neeche **'Open Withdrawal Review Queue'** par click karein."
+                        )
+                        staff_v = f"{staff_designation}, review queue me {pending_count} withdrawal requests pending hain. Staff portal par clearance gates review karein."
+                    else:
+                        staff_ans = (
+                            f"{staff_designation}, there are currently **{pending_count} pending student withdrawal request(s)** awaiting administrative review:\n\n"
+                            f"{queue_text}\n\n"
+                            "To audit submitted documents and sign off on clearance gates (Library, Hostel, Accounts, Registrar), please click **'Open Withdrawal Review Queue'** below."
+                        )
+                        staff_v = f"{staff_designation}, there are {pending_count} student withdrawal applications pending review in your administrative queue."
+                else:
+                    if language == "hi-IN":
+                        staff_ans = (
+                            f"{staff_designation}, वर्तमान में समीक्षा कतार (Review Queue) में **0 छात्र विड्रॉल आवेदन** लंबित हैं। "
+                            "सभी छात्र क्लीयरेंस गेट्स पूर्णतः अद्यतन और स्वीकृत (Clear & Up to date) हैं।\n\n"
+                            "यदि आप यूजीसी रिफंड स्लैब (ORD-WTH-14.1) अथवा कॉशन डिपॉजिट ऑफसेट ऑडिट नियमों की समीक्षा करना चाहते हैं, तो वे नीचे संदर्भित हैं।"
+                        )
+                        staff_v = f"{staff_designation}, वर्तमान में कोई विड्रॉल आवेदन लंबित नहीं है। सभी क्लीयरेंस कतारें पूर्ण हैं।"
+                    elif language == "hi-Latn":
+                        staff_ans = (
+                            f"{staff_designation}, Review Queue me abhi **0 student withdrawal requests** pending hain. "
+                            "Sabhi student clearance gates completely clear aur up-to-date hain.\n\n"
+                            "UGC refund mandates (ORD-WTH-14.1) aur cautionary deposit offset rules verified hain."
+                        )
+                        staff_v = f"{staff_designation}, filhaal koi withdrawal application pending nahi hai. All review gates are clear."
+                    else:
+                        staff_ans = (
+                            f"{staff_designation}, there are currently **0 pending student withdrawal applications** in the administrative review queue. "
+                            "All student departure and clearance workflows are currently clear and up to date.\n\n"
+                            "For reference, official UGC 2024 refund mandates (ORD-WTH-14.1) and caution deposit settlement procedures (ORD-FIN-14.4) are active."
+                        )
+                        staff_v = f"{staff_designation}, there are currently 0 pending student withdrawal requests. All review queues are clear."
+
+                return {
+                    "answer": staff_ans,
+                    "domain": "Staff Clearance & Withdrawal Queue",
+                    "citations": [wth_policy, offset_policy],
+                    "recommended_action": "Open Withdrawal Review Queue",
+                    "action_url": "/staff",
+                    "voice_speech_text": staff_v,
+                    "engine": "UniAssist Policy Engine",
+                }
+
             # Dynamically fetch configured workflow steps
             try:
                 from .procedure_service import ProcedureService
@@ -3317,15 +4887,22 @@ class PolicySearchService:
             best_form = form_matches[0] if form_matches else (policies[0] if policies else None)
 
             if proc:
+                p_title = proc.get("official_name") or proc.get("title") or "University Procedure"
+                p_kiosk = proc.get("kiosk_access") or proc.get("kiosk_action") or "Download form directly on kiosk screen"
+                p_docs = proc.get("required_documents") or proc.get("attachments_required") or ["Completed application form"]
+                p_office = proc.get("submission_office") or proc.get("submission_room") or "Registrar Desk (Room 101)"
+                p_sla = proc.get("deadline_sla") or proc.get("sla_working_days") or "3-5 working days"
+                p_fee = proc.get("fee_details") or proc.get("fee") or "As applicable per fee schedule"
+                p_docs_str = ", ".join(p_docs) if isinstance(p_docs, list) else str(p_docs)
                 content_text = (
-                    f"Verified Procedure for {proc['title']}:\n"
-                    f"1. Action at Kiosk: {proc['kiosk_action']}\n"
-                    f"2. Required Attachments: {', '.join(proc['attachments_required'])}\n"
-                    f"3. Submission Room & Window: {proc['submission_room']} ({proc['window']})\n"
-                    f"4. Turnaround SLA: {proc['sla_working_days']} working days\n"
-                    f"5. Associated Fee: {proc['fee']}"
+                    f"Verified Procedure for {p_title}:\n"
+                    f"1. Action at Kiosk: {p_kiosk}\n"
+                    f"2. Required Attachments: {p_docs_str}\n"
+                    f"3. Submission Room & Window: {p_office}\n"
+                    f"4. Turnaround SLA: {p_sla}\n"
+                    f"5. Associated Fee: {p_fee}"
                 )
-                f_title = proc["title"]
+                f_title = p_title
                 f_act = proc.get("action_label", f"Download {f_title}")
                 f_url = proc.get("action_url", "/forms")
             elif best_form:
@@ -3500,19 +5077,19 @@ class PolicySearchService:
             else:
                 if language == "hi-IN":
                     fallback_msg = (
-                        f"{student_name}, मुझे आपके इस प्रश्न से संबंधित कोई विशिष्ट विश्वविद्यालय अध्यादेश नहीं मिला। "
+                        f"मुझे क्षमा करें, {student_name}, लेकिन मुझे आपके इस प्रश्न से संबंधित कोई विशिष्ट विश्वविद्यालय अध्यादेश नहीं मिला। "
                         "UniAssist सभी 31 फॉर्म, विड्रॉल रिफंड, उपस्थिति छूट (Condonation), कॉशन डिपॉजिट ऑफसेट, बैकपेपर परीक्षा, "
                         "और छात्रवृत्ति नियमों में पूरी सहायता करता है। कृपया इनमें से किसी भी विषय पर पूछें।"
                     )
                 elif language == "hi-Latn":
                     fallback_msg = (
-                        f"{student_name}, mujhe aapke question se matching koi specific ordinance nahi mila. "
+                        f"Sorry {student_name}, mujhe aapke question se matching koi specific ordinance nahi mila. "
                         "UniAssist sabhi 31 forms, Attendance Condonation, Withdrawal Refund, Caution Deposit Offsets, "
                         "Backpapers, aur Scholarships me help provide karta hai. Please inme se kisi topic par poochiye."
                     )
                 else:
                     fallback_msg = (
-                        f"{student_name}, I could not find a specific university ordinance matching your inquiry. "
+                        f"I am sorry, {student_name}, but I could not find a specific university ordinance matching your inquiry. "
                         "UniAssist provides guidance for all 31 university forms, Academics, Attendance Condonation, "
                         "Withdrawal Refunds, Smart Caution Deposit Offsets, Backpapers, Grievances, and Scholarships. "
                         "Please try asking with one of these topics."
@@ -3535,7 +5112,17 @@ class PolicySearchService:
         citations_for_gemini = res.get("citations") or policies or []
         if settings.llm_enabled or settings.is_ollama_enabled or settings.llm_provider.lower() in ("ollama", "gemini", "local"):
             is_deterministic_domain = res.get("domain") in (
+                "General",
+                "General Policies",
+                "Domain Boundary Guard",
+                "Institutional Discipline Guard",
+                "Policy Guardrails",
                 "Academics",
+                "Academics & Curriculum",
+                "Grading & Examination",
+                "Training & Placements",
+                "Library & Learning Resources",
+                "Campus Facilities & Welfare",
                 "Withdrawal & Refunds",
                 "Withdrawal & Caution Deposit Offset",
                 "Withdrawal & Caution Deposit Refund",
@@ -3555,7 +5142,10 @@ class PolicySearchService:
                 "Grievance Navigation",
                 "Scholarship Navigation",
                 "University Portals",
-                "Domain Boundary Guard",
+                "Staff Clearance & Withdrawal Queue",
+                "Staff Administration",
+                "Admissions & Enrollment",
+                "Admissions & Registrar",
                 "HR & Faculty",
                 "HR & Staff",
                 "Conversational",
@@ -3613,10 +5203,16 @@ class PolicySearchService:
 
         # Guaranteed UI Action Button for all campus services
         if res.get("domain") not in ("Conversational", "Domain Boundary Guard"):
-            if not res.get("action_url"):
-                res["action_url"] = "/forms"
-            if not res.get("recommended_action"):
-                res["recommended_action"] = "Open Forms Catalog"
+            if is_staff_user:
+                if not res.get("action_url") or res.get("action_url") in ("/forms", "/withdrawal", "/services"):
+                    res["action_url"] = "/staff"
+                if not res.get("recommended_action") or res.get("recommended_action") in ("Browse Forms & Policies", "Open Forms Catalog", "Start Withdrawal Procedure"):
+                    res["recommended_action"] = "Open Staff Admin Portal"
+            else:
+                if not res.get("action_url"):
+                    res["action_url"] = "/forms"
+                if not res.get("recommended_action"):
+                    res["recommended_action"] = "Open Forms Catalog"
 
         # Universal asterisk sanitizer - strip all raw markdown from any answer
         if res.get("answer"):

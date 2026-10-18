@@ -19,6 +19,9 @@ router = APIRouter(prefix="/api/policy", tags=["Policy Intelligence & FTS5"])
 class PolicyGuideRequest(BaseModel):
     query: str = Field(..., min_length=2, max_length=500, description="Inquiry regarding university policy")
     student_id: Optional[str] = Field(None, description="Optional student ID for personalization")
+    is_staff: Optional[bool] = Field(False, description="Whether the requester is an authorized staff member")
+    staff_role: Optional[str] = Field(None, description="Staff role e.g. Registrar, Hostel, Accounts")
+    staff_username: Optional[str] = Field(None, description="Staff username")
     language: str = Field("en-IN", description="Selected language e.g. en-IN, hi-IN, hi-Latn")
     page_context: Optional[dict[str, Any]] = Field(None, description="Active client screen context")
     conversation_history: Optional[list[dict[str, Any]]] = Field(None, description="Recent conversation turns")
@@ -42,17 +45,31 @@ async def search_policies(
 @router.post("/guide")
 async def get_policy_guidance(body: PolicyGuideRequest, request: Request) -> dict[str, Any]:
     """Hybrid RAG endpoint: combines student profile with FTS5 policy clauses for zero-hallucination guidance."""
+    is_staff = body.is_staff or False
+    staff_role = body.staff_role
     effective_sid = body.student_id
-    if not effective_sid:
-        auth_hdr = request.headers.get("Authorization", "")
-        if auth_hdr.startswith("Bearer "):
-            token = auth_hdr.split(" ", 1)[1].strip()
-            try:
-                from ..security.jwt import decode_access_token
-                payload = decode_access_token(token)
+
+    # Check page_context for staff indicators
+    if body.page_context and isinstance(body.page_context, dict):
+        if body.page_context.get("is_staff") or "/staff" in str(body.page_context.get("route", "")).lower():
+            is_staff = True
+            staff_role = staff_role or body.page_context.get("staff_role") or "Registrar Staff"
+            effective_sid = None
+
+    auth_hdr = request.headers.get("Authorization", "")
+    if auth_hdr.startswith("Bearer "):
+        token = auth_hdr.split(" ", 1)[1].strip()
+        try:
+            from ..security.jwt import decode_access_token
+            payload = decode_access_token(token)
+            if payload.get("role") == "staff":
+                is_staff = True
+                staff_role = staff_role or payload.get("staff_role") or "Registrar Staff"
+                effective_sid = None
+            elif not effective_sid and not is_staff and payload.get("role") == "student":
                 effective_sid = payload.get("sub")
-            except Exception:
-                pass
+        except Exception:
+            pass
 
     guidance = PolicySearchService.hybrid_guidance(
         query=body.query,
@@ -60,6 +77,8 @@ async def get_policy_guidance(body: PolicyGuideRequest, request: Request) -> dic
         page_context=body.page_context,
         language=body.language,
         history=body.conversation_history,
+        is_staff=is_staff,
+        staff_role=staff_role,
     )
     return guidance
 

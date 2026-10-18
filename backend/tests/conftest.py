@@ -47,3 +47,22 @@ def client(initialise_test_db):
     
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture(autouse=True)
+def clean_withdrawal_state():
+    """Ensure tests start without conflicting in-progress withdrawal applications."""
+    from backend.database.connection import get_connection
+    try:
+        conn = get_connection()
+        conn.execute("UPDATE withdrawal_requests SET status = 'completed' WHERE status NOT IN ('completed', 'rejected', 'cancelled')")
+        conn.commit()
+    except Exception:
+        pass
+    yield
+    try:
+        conn = get_connection()
+        conn.execute("UPDATE withdrawal_requests SET status = 'completed' WHERE status NOT IN ('completed', 'rejected', 'cancelled')")
+        conn.commit()
+    except Exception:
+        pass

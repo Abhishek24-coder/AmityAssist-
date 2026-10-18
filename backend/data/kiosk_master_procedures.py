@@ -214,6 +214,30 @@ MASTER_PROCEDURES: dict[str, dict[str, Any]] = {
         "action_url": "/forms",
     },
 
+    "new_admission": {
+        "form_code": "ADM-01",
+        "official_name": "New Student Admission & Document Verification Dossier (Form ADM-01)",
+        "hindi_name": "नवीन छात्र प्रवेश एवं दस्तावेज सत्यापन आवेदन (फॉर्म ADM-01)",
+        "category": "Admissions & Registrar",
+        "kiosk_access": "Download Form ADM-01 directly right here on this UniAssist screen via the action button below, or access it from the Forms Catalog (/forms).",
+        "kiosk_access_hindi": "इसी स्क्रीन पर नीचे दिए गए बटन से Form ADM-01 तुरंत डाउनलोड करें, या फॉर्म्स कैटलॉग (/forms) से प्राप्त करें।",
+        "kiosk_access_hinglish": "Yahin screen par niche diye gaye button se Form ADM-01 turant download karein, ya Forms Catalog (/forms) se lein.",
+        "eligibility": "Candidates seeking fresh enrollment in undergraduate, postgraduate, or diploma programs.",
+        "fee_details": "First semester tuition fee plus INR 10,000 refundable caution deposit.",
+        "required_documents": [
+            "Original 10th and 12th marksheets with attested photocopies",
+            "Qualifying entrance examination rank scorecard (JEE / CUET / State CET / University Test)",
+            "Transfer Certificate (TC) and Migration Certificate",
+            "Character Certificate from head of previous institution",
+            "4 recent passport-size photographs (white background)",
+            "Category / Caste certificate (if applicable)"
+        ],
+        "submission_office": "Directorate of Admissions (Room 101, Central Block)",
+        "deadline_sla": "Document verification and provisional enrollment completed within 24 hours of seat allotment.",
+        "action_label": "Download Form ADM-01 (Admission)",
+        "action_url": "/forms",
+    },
+
     # -------------------------------------------------------------------------
     # 5. FACULTY & STAFF HR PROCEDURES
     # -------------------------------------------------------------------------
@@ -261,7 +285,7 @@ def get_procedure_by_keyword(query: str) -> dict[str, Any] | None:
     """Match student voice or text query against official procedural ground truth."""
     q_low = query.lower()
 
-    if any(w in q_low for w in ["ac-04", "ac04", "condonation", "कंडोनेशन", "अटेंडेंस कम", "कम हाजिरी"]):
+    if any(w in q_low for w in ["ac-04", "ac04", "condonation", "medical leave", "medical application", "sick leave", "illness leave", "कंडोनेशन", "अटेंडेंस कम", "कम हाजिरी", "मेडिकल लीव", "बीमारी"]):
         return MASTER_PROCEDURES["attendance_condonation"]
 
     if any(w in q_low for w in ["ex-02", "ex02", "backpaper", "supplementary", "बैकपेपर", "बैक"]):
@@ -290,5 +314,9 @@ def get_procedure_by_keyword(query: str) -> dict[str, Any] | None:
 
     if any(w in q_low for w in ["faculty leave", "emergency leave", "फैकल्टी लीव"]):
         return MASTER_PROCEDURES["faculty_leave"]
+
+    if any(w in q_low for w in ["admission", "admissions", "daakhila", "dakhila", "एडमिशन", "दाखिला", "प्रवेश"]):
+        if not any(w in q_low for w in ["withdraw", "withdrawal", "cancel", "refund"]):
+            return MASTER_PROCEDURES["new_admission"]
 
     return None

@@ -34,7 +34,7 @@ Completed baseline:
 - Phase 28 multi-university white-label configurator: institution branding settings (name, crest URL, theme colors), dynamic clearance chain desk configuration, and custom refund day slabs.
 - Phase 29 intelligent search & policy guidance: SQLite FTS5 sub-5ms BM25 ordinance search, hybrid RAG guidance, and push-to-talk voice endpoints.
 - Phase 30 production features: Multi-language voice/counselor switcher (English, Hindi, Hinglish) & dynamic AI stop button; Notesheet Word (.docx) export with official institutional headers, signature audit trails, and digital verification seal; and Interactive Procedure Setup Wizard allowing university admins to design custom multi-desk sequential approval workflows, document checklists, and SLA targets.
-- **Phase 31 White-Label Generalization & Institutional Setup Guide**: Complete technical specification and implementation manual for zero-code multi-university adoption, feature switchboard, and dynamic procedure customization etched in [GENERALIZATION_SETUP_GUIDE.md](file:///c:/Users/HP/ANtiAgentBuilding/GENERALIZATION_SETUP_GUIDE.md).
+- **Phase 31 White-Label Generalization & Institutional Setup Guide**: Complete technical specification and implementation manual for zero-code multi-university adoption, feature switchboard, and dynamic procedure customization etched in [GENERALIZATION_SETUP_GUIDE.md](file:///c:/Users/WINDOWS%2011/OneDrive/Desktop/Assist/GENERALIZATION_SETUP_GUIDE.md).
 - **Phase 32 On-Premise Local AI Engine (Ollama / Llama 3.2)**: 100% private, air-gapped on-premise AI integration powered by Ollama and Meta's Llama 3.2 (3B). Features zero cloud data egress, sub-second latency (~0.8s), multi-tier waterfall fallback routing (`Ollama (Llama 3.2)` ➔ `Gemini 1.5 Flash` ➔ `Deterministic SQLite FTS5`), clean speech text sanitization, and automated `/api/policy/llm/status` diagnostics.
 
 Remaining production work:
@@ -47,12 +47,12 @@ Remaining production work:
 Run from the repository root. If Python is already on PATH:
 
 ```powershell
-cd C:\Users\HP\ANtiAgentBuilding
+cd "c:\Users\WINDOWS 11\OneDrive\Desktop\Assist"
 pip install -r backend\requirements.txt
 python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-If Python is not on PATH in this Codex machine, use the checked local virtual environment:
+If Python is not on PATH in this Windows machine, use the checked local virtual environment:
 
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
@@ -61,7 +61,7 @@ If Python is not on PATH in this Codex machine, use the checked local virtual en
 In another terminal:
 
 ```powershell
-cd C:\Users\HP\ANtiAgentBuilding\frontend
+cd frontend
 python -m http.server 5500 --bind 127.0.0.1
 ```
 
@@ -89,7 +89,7 @@ Student ID: STU001
 py -m pytest
 ```
 
-The current verified result is `182 passed` with 0 failures.
+The current verified result is `231 passed` with 0 failures (100% pass rate).
 
 ## Main Local Prototype Endpoints
 

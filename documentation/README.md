@@ -128,7 +128,7 @@ The older prototype currently includes:
 Run these commands from the repository root:
 
 ```powershell
-cd C:\Users\HP\ANtiAgentBuilding
+cd "c:\Users\WINDOWS 11\OneDrive\Desktop\Assist"
 ```
 
 ### 1. Install Dependencies
@@ -206,7 +206,7 @@ python -m pytest
 Expected current result:
 
 ```text
-61 passed
+231 passed (100% pass rate)
 ```
 
 ## Main Endpoints

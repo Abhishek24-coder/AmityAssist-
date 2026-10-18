@@ -10,8 +10,17 @@ from backend.database.connection import get_connection
 
 
 class TestStudentLifecycleRoutes:
+    @staticmethod
+    def _student_headers(client, student_id: str = "STU001"):
+        login = client.post("/api/auth/login", json={"student_id": student_id})
+        return {"Authorization": f"Bearer {login.json()['token']}"}
+
     def test_profile_query_route_returns_expanded_profile(self, client):
-        response = client.get("/api/student/profile", params={"student_id": "STU001"})
+        response = client.get(
+            "/api/student/profile",
+            params={"student_id": "STU001"},
+            headers=self._student_headers(client, "STU001"),
+        )
 
         assert response.status_code == 200
         data = response.json()
@@ -21,7 +30,11 @@ class TestStudentLifecycleRoutes:
         assert data["cgpa"] in (8.75, 8.85)
 
     def test_notices_are_personalized_by_branch_and_semester(self, client):
-        response = client.get("/api/student/notices", params={"student_id": "STU001"})
+        response = client.get(
+            "/api/student/notices",
+            params={"student_id": "STU001"},
+            headers=self._student_headers(client, "STU001"),
+        )
 
         assert response.status_code == 200
         titles = {item["title"] for item in response.json()}
@@ -30,20 +43,29 @@ class TestStudentLifecycleRoutes:
         assert "ECE Electronics Lab Practical Datesheet" not in titles
 
     def test_exams_and_backpaper_registration(self, client):
-        exams_response = client.get("/api/student/exams", params={"student_id": "STU002"})
+        exams_response = client.get(
+            "/api/student/exams",
+            params={"student_id": "STU002"},
+            headers=self._student_headers(client, "STU002"),
+        )
         assert exams_response.status_code == 200
         failed_exam = next(item for item in exams_response.json() if item["grade"] == "F")
 
         register_response = client.post(
             "/api/student/backpaper",
             json={"student_id": "STU002", "exam_id": failed_exam["id"]},
+            headers=self._student_headers(client, "STU002"),
         )
 
         assert register_response.status_code == 200
         assert "registered" in register_response.json()["message"].lower()
 
     def test_scholarship_discovery_and_application(self, client):
-        discovery = client.get("/api/student/scholarships", params={"student_id": "STU003"})
+        discovery = client.get(
+            "/api/student/scholarships",
+            params={"student_id": "STU003"},
+            headers=self._student_headers(client, "STU003"),
+        )
         assert discovery.status_code == 200
         eligible = [item for item in discovery.json() if item["eligible"]]
         assert eligible
@@ -51,6 +73,7 @@ class TestStudentLifecycleRoutes:
         application = client.post(
             "/api/student/scholarships/apply",
             json={"student_id": "STU003", "scholarship_id": eligible[0]["id"]},
+            headers=self._student_headers(client, "STU003"),
         )
 
         assert application.status_code == 200
@@ -64,10 +87,15 @@ class TestStudentLifecycleRoutes:
                 "category": "academic",
                 "description": "Need help resolving a course registration issue.",
             },
+            headers=self._student_headers(client, "STU004"),
         )
         assert create.status_code == 200
 
-        listing = client.get("/api/student/grievances", params={"student_id": "STU004"})
+        listing = client.get(
+            "/api/student/grievances",
+            params={"student_id": "STU004"},
+            headers=self._student_headers(client, "STU004"),
+        )
         assert listing.status_code == 200
         assert any(item["category"] == "academic" for item in listing.json())
 

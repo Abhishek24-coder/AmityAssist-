@@ -59,6 +59,22 @@ def sanitize_and_verify_response(text: str) -> str:
         return ""
     cleaned = clean_text_for_speech(text)
 
+    # 0. Intercept LLM meta-roleplay preambles & conversational scenario setups
+    meta_patterns = [
+        r"^it seems like you're trying to create a scenario[^\n.!?]*[.!?]?\s*",
+        r"^i'll provide a possible response[^\n.!?]*[.!?]?\s*",
+        r"^here is a possible response[^\n.!?]*[.!?]?\s*",
+        r"^response:\s*(counselor:)?\s*",
+        r"^counselor:\s*",
+        r"^as an ai[^\n.!?]*[.!?]?\s*",
+    ]
+    for mp in meta_patterns:
+        cleaned = re.sub(mp, "", cleaned, flags=re.IGNORECASE).strip()
+
+    # Intercept hallucinated harassment or misconduct encouragement
+    if any(p in cleaned.lower() for p in ["teacher ko pareshaan", "pareshan karna chahiye", "pareshaan karna chaahiye", "trouble the teacher", "harass"]):
+        return "Sorry, main is baare me help nahi kar sakta. University Code of Conduct ke mutabiq teachers ya staff ko pareshaan karna strictly prohibited hai."
+
     # 1. Strip internal legalistic codes from spoken response
     cleaned = re.sub(r"\[?(ORD-[A-Z0-9.-]+|OCRM-[A-Z0-9.-]+)\]?", "university regulations", cleaned, flags=re.IGNORECASE)
 
@@ -76,8 +92,8 @@ def sanitize_and_verify_response(text: str) -> str:
     # Intercept fake service centers: सेवा केंद्र 3, Service Center 3, etc.
     cleaned = re.sub(r"(सेवा\s*केंद्र|Service\s*Center)\s*\d+", "विश्वविद्यालय कार्यालय", cleaned, flags=re.IGNORECASE)
 
-    # 3. Hard sentence ceiling: Max 3 sentences to guarantee no rambling
-    sentence_delimiters = re.split(r"([.!?।])", cleaned)
+    # 3. Hard sentence ceiling: Max 3 to 4 complete sentences without breaking abbreviations (e.g. B.Tech, Dr., 7.5)
+    sentence_delimiters = re.split(r'(?<!\b[A-Za-z])(?<!\b[A-Z][a-z])(?<!\d)([.!?।])(?:\s+|$)', cleaned)
     if len(sentence_delimiters) > 1:
         reconstructed = []
         sentence_count = 0
@@ -201,10 +217,11 @@ def call_ollama_llama3(
         "messages": messages,
         "stream": False,
         "options": {
-            "temperature": 0.0,
+            "temperature": 0.1,
             "top_p": 0.9,
             "repeat_penalty": 1.1,
-            "num_predict": 120,
+            "num_predict": 100,
+            "num_ctx": 1024,
         },
     }
 
@@ -238,11 +255,11 @@ def generate_local_policy_answer(
         return None
     if not citations:
         if language == "hi-IN":
-            return "मैं केवल सत्यापित विश्वविद्यालय नियमों और अभिलेखों के आधार पर ही उत्तर दे सकता हूँ। इस प्रश्न के लिए कोई मेल खाता अध्यादेश नहीं मिला।"
+            return "मुझे क्षमा करें, मैं केवल सत्यापित विश्वविद्यालय नियमों और अभिलेखों के आधार पर ही उत्तर दे सकता हूँ। इस प्रश्न के लिए कोई मेल खाता अध्यादेश नहीं मिला।"
         elif language == "hi-Latn":
-            return "Main keval verified university rules ke basis par answer kar sakta hoon. Is query ke liye koi matching policy nahi mili."
+            return "Sorry, main keval verified university rules ke basis par answer kar sakta hoon. Is query ke liye koi matching policy nahi mili."
         return (
-            "I can only provide answers grounded in verified university policy and workflow records. "
+            "I am sorry, but I can only provide answers grounded in verified university policy and workflow records. "
             "No matching ordinance or guidance was found for this request."
         )
 

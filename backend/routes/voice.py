@@ -19,6 +19,9 @@ router = APIRouter(prefix="/api/voice", tags=["Voice Functionality & TTS"])
 class VoiceQueryRequest(BaseModel):
     spoken_text: str = Field(..., min_length=1, max_length=500, description="Transcribed voice text from microphone")
     student_id: Optional[str] = Field(None, description="Optional student ID for personalization")
+    is_staff: Optional[bool] = Field(False, description="Whether the requester is an authorized staff member")
+    staff_role: Optional[str] = Field(None, description="Staff role e.g. Registrar, Hostel, Accounts")
+    staff_username: Optional[str] = Field(None, description="Staff username")
     language: str = Field("en-IN", description="BCP 47 language tag e.g. en-IN, hi-IN")
     page_context: Optional[dict[str, Any]] = Field(None, description="Active client screen context")
     conversation_history: Optional[list[dict[str, Any]]] = Field(None, description="Recent conversation turns")
@@ -27,17 +30,31 @@ class VoiceQueryRequest(BaseModel):
 @router.post("/query")
 async def process_voice_query(body: VoiceQueryRequest, request: Request) -> dict[str, Any]:
     """Process a voice-command inquiry and return voice-optimized speech response and action shortcuts."""
+    is_staff = body.is_staff or False
+    staff_role = body.staff_role
     effective_sid = body.student_id
-    if not effective_sid:
-        auth_hdr = request.headers.get("Authorization", "")
-        if auth_hdr.startswith("Bearer "):
-            token = auth_hdr.split(" ", 1)[1].strip()
-            try:
-                from ..security.jwt import decode_access_token
-                payload = decode_access_token(token)
+
+    # Check page_context for staff indicators
+    if body.page_context and isinstance(body.page_context, dict):
+        if body.page_context.get("is_staff") or "/staff" in str(body.page_context.get("route", "")).lower():
+            is_staff = True
+            staff_role = staff_role or body.page_context.get("staff_role") or "Registrar Staff"
+            effective_sid = None
+
+    auth_hdr = request.headers.get("Authorization", "")
+    if auth_hdr.startswith("Bearer "):
+        token = auth_hdr.split(" ", 1)[1].strip()
+        try:
+            from ..security.jwt import decode_access_token
+            payload = decode_access_token(token)
+            if payload.get("role") == "staff":
+                is_staff = True
+                staff_role = staff_role or payload.get("staff_role") or "Registrar Staff"
+                effective_sid = None
+            elif not effective_sid and not is_staff and payload.get("role") == "student":
                 effective_sid = payload.get("sub")
-            except Exception:
-                pass
+        except Exception:
+            pass
 
     guidance = PolicySearchService.hybrid_guidance(
         query=body.spoken_text,
@@ -45,6 +62,8 @@ async def process_voice_query(body: VoiceQueryRequest, request: Request) -> dict
         page_context=body.page_context,
         language=body.language,
         history=body.conversation_history,
+        is_staff=is_staff,
+        staff_role=staff_role,
     )
 
     clean_speech = guidance.get("voice_speech_text") or guidance.get("answer", "")

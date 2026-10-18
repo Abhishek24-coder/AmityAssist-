@@ -18,7 +18,7 @@ def _student_headers(client, student_id="STU001"):
 class TestPhase19Compliance:
     def test_export_student_data_structure(self, client):
         """Export must return complete portable JSON bundle for a valid student."""
-        res = client.get("/api/compliance/export/STU001")
+        res = client.get("/api/compliance/export/STU001", headers=_student_headers(client, "STU001"))
         assert res.status_code == 200
         data = res.json()
         assert "export_metadata" in data
@@ -34,7 +34,10 @@ class TestPhase19Compliance:
 
     def test_export_nonexistent_student_returns_404(self, client):
         """Exporting unknown student returns 404."""
-        res = client.get("/api/compliance/export/NONEXISTENT999")
+        # Nonexistent student token attempting to export non-existent record
+        from backend.security.jwt import create_access_token
+        token = create_access_token("NONEXISTENT999", "Student")
+        res = client.get("/api/compliance/export/NONEXISTENT999", headers={"Authorization": f"Bearer {token}"})
         assert res.status_code == 404
 
     def test_export_respects_student_token_isolation(self, client):
@@ -54,12 +57,16 @@ class TestPhase19Compliance:
         res = client.post("/api/compliance/erasure", json={
             "student_id": "STU012",
             "reason": "Graduated and requested GDPR erasure"
-        })
+        }, headers=_student_headers(client, "STU012"))
         assert res.status_code == 200
         assert res.json()["status"] == "completed"
 
         # Verify profile was scrubbed/anonymized in DB
-        profile_res = client.get("/api/student/profile", params={"student_id": "STU012"})
+        profile_res = client.get(
+            "/api/student/profile",
+            params={"student_id": "STU012"},
+            headers=_student_headers(client, "STU012"),
+        )
         assert profile_res.status_code == 200
         profile = profile_res.json()
         assert "Anonymized Student" in profile["name"]

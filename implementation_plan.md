@@ -18,7 +18,7 @@ We are converting the secure withdrawal chatbot into a complete AI-driven Studen
 
 ### Database Layer
 
-#### [MODIFY] [seed.py](file:///c:/Users/HP/ANtiAgentBuilding/backend/database/seed.py)
+#### [MODIFY] [seed.py](file:///c:/Users/WINDOWS%2011/OneDrive/Desktop/Assist/backend/database/seed.py)
 - Expand the schema with new tables: `users` (for staff accounts), `notices`, `grievances`, `scholarships`, `scholarship_applications`, `examinations`, `internships`.
 - Update the `students` table to add fields: `branch`, `semester`, `attendance`, `cgpa`, `fee_status`, `fee_due`, `hostel_status`, `scholarship_status`, `academic_performance`, `interests`.
 - Add rich mock data: notices targeted to specific branches, sample examinations/results, internship postings, and department staff accounts.
@@ -27,11 +27,11 @@ We are converting the secure withdrawal chatbot into a complete AI-driven Studen
 
 ### Backend API & Services
 
-#### [MODIFY] [schemas.py](file:///c:/Users/HP/ANtiAgentBuilding/backend/models/schemas.py)
+#### [MODIFY] [schemas.py](file:///c:/Users/WINDOWS%2011/OneDrive/Desktop/Assist/backend/models/schemas.py)
 - Add schemas for new endpoints: notice list, scholarship application, exam results, grievance registration, and staff request operations.
 - Update `VerifyResponse` to include the student's full profile details (attendance, CGPA, branch, etc.).
 
-#### [MODIFY] [chat_service.py](file:///c:/Users/HP/ANtiAgentBuilding/backend/services/chat_service.py)
+#### [MODIFY] [chat_service.py](file:///c:/Users/WINDOWS%2011/OneDrive/Desktop/Assist/backend/services/chat_service.py)
 - Extend the FSM state machine to handle interactive inquiries about:
   - **Academics / Exams**: Asking about CGPA, attendance, or registering back papers.
   - **Scholarships**: Recommending scholarships based on CGPA and auto-applying.
@@ -39,7 +39,7 @@ We are converting the secure withdrawal chatbot into a complete AI-driven Studen
   - **Withdrawals**: Guide student through withdrawal steps, calculating tuition refund based on enrollment date, and listing required documents.
 - Support multilingual responses (Hindi, Hinglish, English) based on voice toggles or user message language detection.
 
-#### [NEW] [student.py](file:///c:/Users/HP/ANtiAgentBuilding/backend/routes/student.py)
+#### [NEW] [student.py](file:///c:/Users/WINDOWS%2011/OneDrive/Desktop/Assist/backend/routes/student.py)
 - Add API endpoints for:
   - `GET /api/student/profile`: Fetch student profile.
   - `GET /api/student/notices`: Fetch personalized notices based on branch/semester.
@@ -50,21 +50,21 @@ We are converting the secure withdrawal chatbot into a complete AI-driven Studen
   - `POST /api/student/grievances`: File a grievance and track status.
   - `GET /api/student/internships`: Fetch internship opportunities.
 
-#### [MODIFY] [documents.py](file:///c:/Users/HP/ANtiAgentBuilding/backend/routes/documents.py)
+#### [MODIFY] [documents.py](file:///c:/Users/WINDOWS%2011/OneDrive/Desktop/Assist/backend/routes/documents.py)
 - Update upload endpoint to perform mock Document AI analysis:
   - OCR extraction of student name, ID, and signatures.
   - Verification checks (valid document, missing fields, duplicate detection, image quality).
   - Fraud detection (simulated checks for altered text, mismatched signatures, or fake stamps).
   - Save results to the `documents` table to display in the Admin Portal.
 
-#### [MODIFY] [admin.py](file:///c:/Users/HP/ANtiAgentBuilding/backend/routes/admin.py)
+#### [MODIFY] [admin.py](file:///c:/Users/WINDOWS%2011/OneDrive/Desktop/Assist/backend/routes/admin.py)
 - Expand dashboard APIs for staff roles:
   - `GET /api/admin/grievances`: Fetch grievances for coordinator/registrar.
   - `POST /api/admin/grievances/{id}/resolve`: Resolve grievance with comments.
   - `GET /api/admin/documents`: Fetch uploaded documents with Document AI flags.
   - `POST /api/admin/documents/{id}/verify`: Mark document verified or fraudulent.
 
-#### [MODIFY] [main.py](file:///c:/Users/HP/ANtiAgentBuilding/backend/main.py)
+#### [MODIFY] [main.py](file:///c:/Users/WINDOWS%2011/OneDrive/Desktop/Assist/backend/main.py)
 - Mount the new `student` router.
 - Clear/reset DB during local lifespan startup if structure changes are detected or environment is reset.
 
@@ -72,7 +72,7 @@ We are converting the secure withdrawal chatbot into a complete AI-driven Studen
 
 ### Frontend UI & UX
 
-#### [MODIFY] [index.html](file:///c:/Users/HP/ANtiAgentBuilding/frontend/index.html)
+#### [MODIFY] [index.html](file:///c:/Users/WINDOWS%2011/OneDrive/Desktop/Assist/frontend/index.html)
 - Redesign the layout with a responsive, glassmorphic sidebar and high-fidelity tab screens:
   1. **Verify Screen**: Log in as a Student or select a Staff Role (Registrar, Admission, etc.).
   2. **Student Dashboard Tab**:
@@ -99,13 +99,13 @@ We are converting the secure withdrawal chatbot into a complete AI-driven Studen
      - Float button to trigger Microphone listening (Web Speech API) or synthesized responses.
      - Voice configurations (English/Hindi/Hinglish).
 
-#### [MODIFY] [app.js](file:///c:/Users/HP/ANtiAgentBuilding/frontend/js/app.js)
+#### [MODIFY] [app.js](file:///c:/Users/WINDOWS%2011/OneDrive/Desktop/Assist/frontend/js/app.js)
 - Handle tab switching, form submittals, and dashboard data fetching.
 - Implement HTML5 Web Speech API for voice interactions and text-to-speech feedback.
 - Add Document AI simulation interface: when a document is uploaded, show a scanning animation and render JSON-like OCR audit data.
 - Handle staff actions (updating withdrawals, responding to grievances, verifying OCR results).
 
-#### [MODIFY] [styles.css](file:///c:/Users/HP/ANtiAgentBuilding/frontend/css/styles.css)
+#### [MODIFY] [styles.css](file:///c:/Users/WINDOWS%2011/OneDrive/Desktop/Assist/frontend/css/styles.css)
 - Implement premium glassmorphic styling:
   - `background: rgba(255, 255, 255, 0.4)` with `backdrop-filter: blur(12px)`.
   - Haromonious color palette (Amity Blue `#1B325D`, Amity Yellow `#FFCB05`, soft jade greens, light slate).

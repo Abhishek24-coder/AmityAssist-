@@ -555,13 +555,27 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
   }
 
   void _selectLanguageAndGreet(String langCode) {
+    final auth = ref.read(authProvider);
+    final isStaff = auth.isStaff || (widget.currentRoute != null && widget.currentRoute!.contains('staff'));
+    final staffRole = auth.staffRole ?? 'Registrar Staff';
+
     String greeting;
-    if (langCode == 'hi-IN') {
-      greeting = 'नमस्ते! मैं आपका डिजिटल यूनिवर्सिटी काउंसलर हूँ। आप मुझसे फीस, अटेंडेंस, विड्रॉल या किसी भी नियम के बारे में पूछ सकते हैं। बताइए, मैं आपकी क्या सहायता करूँ?';
-    } else if (langCode == 'hi-Latn') {
-      greeting = 'Hello! Main aapka University Counselor hoon. Attendance, exam rules, withdrawal refund ya kisi bhi policy ke baare mein poochiye! Main aapki kya help karoon?';
+    if (isStaff) {
+      if (langCode == 'hi-IN') {
+        greeting = 'नमस्ते! मैं आपका प्रशासनिक AI परामर्शदाता हूँ। आप $staffRole के रूप में लंबित विड्रॉल कतार, डिजिटल नोटशीट, OCR सत्यापन, अथवा विश्वविद्यालय अध्यादेशों की जांच कर सकते हैं। बताइए, मैं आपकी क्या सहायता करूँ?';
+      } else if (langCode == 'hi-Latn') {
+        greeting = 'Hello! Main aapka Administrative Counselor hoon. Aap $staffRole ke roop me pending withdrawal queue, digital notesheets, OCR document verification, ya university ordinances ke baare mein pooch sakte hain. Main aapki kya help karoon?';
+      } else {
+        greeting = 'Hello! I am your University Administrative Digital Counselor. As $staffRole, you can ask about pending student withdrawal queues, notesheets review, OCR document audit, or ordinance verifications. How can I assist you today?';
+      }
     } else {
-      greeting = 'Hello! I am your University Digital Counselor. You can ask me about attendance rules, fee refunds, withdrawal clearance, or any campus policy. How can I help you today?';
+      if (langCode == 'hi-IN') {
+        greeting = 'नमस्ते! मैं आपका डिजिटल यूनिवर्सिटी काउंसलर हूँ। आप मुझसे फीस, अटेंडेंस, विड्रॉल या किसी भी नियम के बारे में पूछ सकते हैं। बताइए, मैं आपकी क्या सहायता करूँ?';
+      } else if (langCode == 'hi-Latn') {
+        greeting = 'Hello! Main aapka University Counselor hoon. Attendance, exam rules, withdrawal refund ya kisi bhi policy ke baare mein poochiye! Main aapki kya help karoon?';
+      } else {
+        greeting = 'Hello! I am your University Digital Counselor. You can ask me about attendance rules, fee refunds, withdrawal clearance, or any campus policy. How can I help you today?';
+      }
     }
 
     setState(() {
@@ -578,8 +592,7 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
       ));
     });
 
-    _speakGuidance(greeting);
-
+    // Auto-speaking disabled: student can tap listen/speak button if audio is desired.
     // Auto-listening removed: microphone is strictly push-to-talk to prevent ambient room noise pickup
   }
 
@@ -637,12 +650,21 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
       final dio = ref.read(apiClientProvider);
       final auth = ref.read(authProvider);
       final prefs = ref.read(sharedPreferencesProvider);
-      final studentId = auth.studentId ?? prefs.getString('student_id');
+      final isStaff = auth.isStaff || (widget.currentRoute != null && widget.currentRoute!.contains('staff'));
+      final studentId = isStaff ? null : (auth.studentId ?? prefs.getString('student_id'));
+      final staffRole = auth.staffRole ?? (isStaff ? 'Registrar Staff' : null);
+      final staffUsername = auth.staffUsername ?? (isStaff ? 'Staff' : null);
+
       final pageContext = widget.currentRoute != null
           ? PageContextState.fromRoute(widget.currentRoute!)
           : ref.read(pageContextProvider);
       final pageContextJson = pageContext.toJson();
-      if (studentId != null && studentId.isNotEmpty) {
+      if (isStaff) {
+        pageContextJson['is_staff'] = true;
+        pageContextJson['staff_role'] = staffRole;
+        pageContextJson['staff_username'] = staffUsername;
+        pageContextJson.remove('student_id');
+      } else if (studentId != null && studentId.isNotEmpty) {
         pageContextJson['student_id'] = studentId;
       }
 
@@ -660,28 +682,28 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
               })
           .toList();
 
+      final requestData = {
+        'spoken_text': cleanQ,
+        'query': cleanQ,
+        'student_id': studentId,
+        'is_staff': isStaff,
+        'staff_role': staffRole,
+        'staff_username': staffUsername,
+        'language': _selectedLanguage,
+        'page_context': pageContextJson,
+        'conversation_history': historyPayload,
+      };
+
       Response resp;
       try {
         resp = await dio.post(
           '/voice/query',
-          data: {
-            'spoken_text': cleanQ,
-            'student_id': studentId,
-            'language': _selectedLanguage,
-            'page_context': pageContextJson,
-            'conversation_history': historyPayload,
-          },
+          data: requestData,
         );
       } catch (_) {
         resp = await dio.post(
           '/policy/guide',
-          data: {
-            'query': cleanQ,
-            'student_id': studentId,
-            'language': _selectedLanguage,
-            'page_context': pageContextJson,
-            'conversation_history': historyPayload,
-          },
+          data: requestData,
         );
       }
 
@@ -810,7 +832,7 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
     if (text.isEmpty) return;
     setState(() => _isSpeaking = true);
     final targetLang = _selectedLanguage == 'hi-Latn' ? 'en-IN' : _selectedLanguage;
-    TtsService().speak(
+    WebVoiceBridge.speak(
       text,
       lang: targetLang,
       rate: 0.95,
@@ -822,14 +844,25 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
 
   @override
   Widget build(BuildContext context) {
-    final quickPrompts = [
-      {'label': 'What page are we on?', 'q': 'What page are we on and what should I do next?'},
-      {'label': 'Attendance Shortage (ORD-7.2)', 'q': 'Can I write semester exams with 71% attendance?'},
-      {'label': 'Lost ID Card Offset (ORD-14.4)', 'q': 'Can I offset lost ID card ₹200 fine from caution deposit?'},
-      {'label': 'Withdrawal Slabs (ORD-14.1)', 'q': 'What is the tuition refund percentage for withdrawal?'},
-      {'label': '4-Gate Clearance (ORD-9.3)', 'q': 'How does the 4-gate clearance chain work?'},
-      {'label': 'Backpaper Exam Fee (ORD-12.1)', 'q': 'What is the backpaper exam fee and deadline?'},
-    ];
+    final auth = ref.watch(authProvider);
+    final isStaff = auth.isStaff || (widget.currentRoute != null && widget.currentRoute!.contains('staff'));
+
+    final quickPrompts = isStaff
+        ? [
+            {'label': 'Pending Withdrawals Queue', 'q': 'Which students have pending withdrawal requests in the review queue?'},
+            {'label': 'Review Digital Notesheets', 'q': 'How do I review and mark active disciplinary notesheets?'},
+            {'label': 'OCR Document Audit', 'q': 'How does OCR identity extraction and fraud verification work?'},
+            {'label': 'Clearance Pipeline Desk', 'q': 'What are the 4 clearance gates and approval SLAs for staff?'},
+            {'label': 'What page are we on?', 'q': 'What page are we on and what should I do next?'},
+          ]
+        : [
+            {'label': 'What page are we on?', 'q': 'What page are we on and what should I do next?'},
+            {'label': 'Attendance Shortage (ORD-7.2)', 'q': 'Can I write semester exams with 71% attendance?'},
+            {'label': 'Lost ID Card Offset (ORD-14.4)', 'q': 'Can I offset lost ID card ₹200 fine from caution deposit?'},
+            {'label': 'Withdrawal Slabs (ORD-14.1)', 'q': 'What is the tuition refund percentage for withdrawal?'},
+            {'label': '4-Gate Clearance (ORD-9.3)', 'q': 'How does the 4-gate clearance chain work?'},
+            {'label': 'Backpaper Exam Fee (ORD-12.1)', 'q': 'What is the backpaper exam fee and deadline?'},
+          ];
 
     final stopButton = IconButton(
       tooltip: 'Stop response / speaking',
@@ -1223,9 +1256,11 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
                               width: double.infinity,
                               child: ElevatedButton.icon(
                                 onPressed: () {
-                                  final url = turn.actionUrl ?? '/forms';
+                                  final url = turn.actionUrl ?? (isStaff ? '/staff' : '/forms');
                                   Navigator.of(context).pop();
-                                  context.push(url);
+                                  if (widget.currentRoute != url) {
+                                    context.push(url);
+                                  }
                                 },
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppColors.primary,

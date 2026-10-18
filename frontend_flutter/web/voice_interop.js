@@ -94,6 +94,8 @@ window.uniassistVoice = {
             }
           }
           if (onResult) onResult(textToDispatch);
+        } else {
+          if (onError) onError('no-speech');
         }
       };
 
@@ -165,12 +167,18 @@ window.uniassistVoice = {
     return voices.find(function(v) { return v.default; }) || voices[0];
   },
 
-  speak: function(text, lang, rate) {
-    if (!('speechSynthesis' in window)) return;
+  speak: function(text, lang, rate, onComplete) {
+    if (!('speechSynthesis' in window)) {
+      if (typeof onComplete === 'function') onComplete();
+      return;
+    }
     try {
       window.speechSynthesis.cancel();
       var clean = (text || '').replace(/[#*`_\[\]()]/g, '').trim();
-      if (!clean) return;
+      if (!clean) {
+        if (typeof onComplete === 'function') onComplete();
+        return;
+      }
 
       var utterance = new SpeechSynthesisUtterance(clean);
       var targetLang = lang || 'en-IN';
@@ -185,11 +193,13 @@ window.uniassistVoice = {
       window.uniassistVoice.isSpeaking = true;
       utterance.onend = function() {
         window.uniassistVoice.isSpeaking = false;
+        if (typeof onComplete === 'function') onComplete();
         if (window._onUniAssistTtsEnd) window._onUniAssistTtsEnd();
       };
       utterance.onerror = function(e) {
         console.warn('[UniAssist Voice] TTS error:', e);
         window.uniassistVoice.isSpeaking = false;
+        if (typeof onComplete === 'function') onComplete();
         if (window._onUniAssistTtsEnd) window._onUniAssistTtsEnd();
       };
 
@@ -197,6 +207,7 @@ window.uniassistVoice = {
     } catch (e) {
       console.warn('[UniAssist Voice] Speak exception:', e);
       window.uniassistVoice.isSpeaking = false;
+      if (typeof onComplete === 'function') onComplete();
       if (window._onUniAssistTtsEnd) window._onUniAssistTtsEnd();
     }
   },

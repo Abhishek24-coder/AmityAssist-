@@ -986,10 +986,8 @@ function setupVoiceControls() {
             if (!transcript) return;
             messageInput.value = transcript;
             updateCharCount();
-            setVoiceStatus("Transcript ready");
-            if (state.sessionId) {
-                sendMessage(transcript);
-            }
+            messageInput.focus();
+            setVoiceStatus("Transcript captured");
         });
 
         state.recognition.addEventListener("end", () => {
@@ -1015,13 +1013,25 @@ voiceListenBtn.addEventListener("click", () => {
     if (state.isListening) {
         state.recognition.stop();
     } else {
+        if ("speechSynthesis" in window) {
+            window.speechSynthesis.cancel();
+        }
         state.recognition.start();
     }
 });
 
 voiceSpeakBtn.addEventListener("click", () => {
     if (!("speechSynthesis" in window)) return;
-    const text = state.latestBotReply || "Verify your identity, then ask Amity Advisor for help.";
+    if (window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
+        setVoiceStatus("Speech stopped");
+        return;
+    }
+    const text = state.latestBotReply;
+    if (!text) {
+        setVoiceStatus("No reply to read");
+        return;
+    }
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "en-IN";

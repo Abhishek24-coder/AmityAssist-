@@ -14,6 +14,7 @@ class WebVoiceBridge {
     String text, {
     String lang = 'en-IN',
     double rate = 0.95,
+    void Function()? onComplete,
   }) {}
 
   static void stopSpeaking() {}

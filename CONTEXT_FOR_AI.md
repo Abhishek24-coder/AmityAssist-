@@ -68,18 +68,16 @@ When modifying or expanding this codebase, you must adhere strictly to these arc
 ## 4. How to Execute Work Using `CHECKPOINT.md`
 
 1. **Step 1: Inspect Status:**
-   * Open [CHECKPOINT.md](file:///c:/Users/HP/ANtiAgentBuilding/CHECKPOINT.md).
-   * Note that **Phases 0 through 20 are 100% completed and verified** with 110 passing automated tests.
-   * Review the pending roadmap: **Phases 21 through 29**.
-2. **Step 2: Understand the Immediate Target:**
-   * Pick the next pending phase (e.g., **Phase 21: Multi-Department Clearance & Itemized Vouchers** or **Phase 22: Smart Financial Offsetting**).
-   * Read the corresponding functional requirements in [SYSTEM_DESIGN.md](file:///c:/Users/HP/ANtiAgentBuilding/SYSTEM_DESIGN.md) and [GOAL.md](file:///c:/Users/HP/ANtiAgentBuilding/GOAL.md).
+   * Open [CHECKPOINT.md](file:///c:/Users/WINDOWS%2011/OneDrive/Desktop/Assist/CHECKPOINT.md).
+   * Note that **Phases 0 through 32 are 100% completed and verified** with 231 passing automated tests.
+2. **Step 2: Understand the Architecture:**
+   * Read the corresponding functional requirements in [SYSTEM_DESIGN.md](file:///c:/Users/WINDOWS%2011/OneDrive/Desktop/Assist/SYSTEM_DESIGN.md) and [GOAL.md](file:///c:/Users/WINDOWS%2011/OneDrive/Desktop/Assist/GOAL.md).
 3. **Step 3: Execute Methodically:**
    * Write clean, modular code in backend routes and Flutter presentation widgets.
    * Write automated test cases in `backend/tests/`.
-   * Run the test suite: `.venv\Scripts\python.exe -m pytest -q` and verify that all existing tests plus your new tests pass (0 failures).
+   * Run the test suite: `py -m pytest` and verify that all existing tests pass (0 failures).
 4. **Step 4: Update the Checkpoint:**
-   * Once a phase is verified, edit [CHECKPOINT.md](file:///c:/Users/HP/ANtiAgentBuilding/CHECKPOINT.md) and change `[ ]` to `[x]` for the completed items.
+   * When updates occur, edit [CHECKPOINT.md](file:///c:/Users/WINDOWS%2011/OneDrive/Desktop/Assist/CHECKPOINT.md) and keep verification logs synchronized.
 
 ---
 

@@ -39,12 +39,16 @@ class WebVoiceBridge {
         return;
       }
 
-      final onResultJS = ((JSString text) {
-        onResult(text.toDart);
+      final onResultJS = ((JSAny? text) {
+        final dartText = text?.dartify()?.toString() ?? '';
+        if (dartText.trim().isNotEmpty) {
+          onResult(dartText.trim());
+        }
       }).toJS;
 
-      final onErrorJS = ((JSString err) {
-        onError(err.toDart);
+      final onErrorJS = ((JSAny? err) {
+        final dartErr = err?.dartify()?.toString() ?? 'Speech recognition error';
+        onError(dartErr);
       }).toJS;
 
       fn.callAsFunction(voice, lang.toJS, onResultJS, onErrorJS);
@@ -66,13 +70,26 @@ class WebVoiceBridge {
     String text, {
     String lang = 'en-IN',
     double rate = 0.95,
+    void Function()? onComplete,
   }) {
     if (!kIsWeb) return;
     try {
       final voice = globalContext['uniassistVoice'] as JSObject?;
       final fn = voice?['speak'] as JSFunction?;
       if (fn == null) return;
-      fn.callAsFunction(voice, text.toJS, lang.toJS, rate.toJS);
+
+      JSFunction? onCompleteJS;
+      if (onComplete != null) {
+        onCompleteJS = (() {
+          onComplete();
+        }).toJS;
+      }
+
+      if (onCompleteJS != null) {
+        fn.callAsFunction(voice, text.toJS, lang.toJS, rate.toJS, onCompleteJS);
+      } else {
+        fn.callAsFunction(voice, text.toJS, lang.toJS, rate.toJS);
+      }
     } catch (_) {}
   }
 
