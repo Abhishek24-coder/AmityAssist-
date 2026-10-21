@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/kiosk_theme.dart';
 import '../../../core/widgets/uniassist_logo.dart';
+import '../../../core/services/page_context_service.dart';
+import '../../auth/application/auth_provider.dart';
 import 'assistant_fab.dart';
 
 class KioskWelcomeScreen extends ConsumerStatefulWidget {
@@ -31,6 +33,14 @@ class _KioskWelcomeScreenState extends ConsumerState<KioskWelcomeScreen> {
     Future.delayed(const Duration(milliseconds: 3800), () {
       if (mounted) {
         setState(() => _showSplash = false);
+      }
+    });
+
+    // Ensure any leftover authenticated session is purged on the public Front Desk Kiosk screen
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(authProvider.notifier).logout();
+        ref.read(pageContextProvider.notifier).setRoute('/');
       }
     });
   }
@@ -61,7 +71,7 @@ class _KioskWelcomeScreenState extends ConsumerState<KioskWelcomeScreen> {
     return Stack(
       children: [
         Scaffold(
-          floatingActionButton: const AssistantFab(),
+          floatingActionButton: const AssistantFab(currentRoute: '/'),
           floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
           body: SafeArea(
             child: Column(

@@ -219,15 +219,22 @@ def _is_greeting(raw_message: str) -> bool:
 
 
 def _handle_greeting(session: dict, language: str, voice: bool) -> ChatResponse:
-    student_id = session["student_id"]
-    student = _fetch_student(student_id)
+    student_id = session.get("student_id", "GUEST")
+    student = _fetch_student(student_id) if student_id not in ("GUEST", "PUBLIC", "NONE", "") else None
     prefix = _language_prefix(language, voice)
-    name = student["name"].split()[0] if student else "there"
-    reply = (
-        f"{prefix}Hello {name}. I can help with your CGPA, attendance, exams, "
-        "scholarships, grievances, documents, hostel, fee status, notices, "
-        "internships, or withdrawal/refund questions."
-    )
+    if student:
+        name = student["name"].split()[0]
+        reply = (
+            f"{prefix}Hello {name}. I can help with your CGPA, attendance, exams, "
+            "scholarships, grievances, documents, hostel, fee status, notices, "
+            "internships, or withdrawal/refund questions."
+        )
+    else:
+        reply = (
+            f"{prefix}Hello! I am your UniAssist Campus Counselor. You are currently browsing as a Guest. "
+            "I can assist you with university ordinances, 75% attendance regulations, fee refund slabs, and official forms. "
+            "To view your personal academic records, attendance, or application status, please sign in with your Student ID."
+        )
     _log_message(student_id, reply, "bot", "help", "positive")
     return ChatResponse(
         reply=reply, state="ROUTED", intent="help", sentiment="positive"
@@ -487,6 +494,16 @@ def _route_lifecycle_message(
             reply=reply, state="ROUTED", intent=routed_intent, sentiment=sentiment
         )
 
+    if routed_intent in ("academics", "fees", "hostel", "scholarships", "exams") and not student:
+        reply = (
+            f"{prefix}You are currently browsing as a Guest. "
+            "Please sign in with your verified Student ID to view your personal academic records, attendance %, CGPA, fee status, and examination schedules."
+        )
+        _log_message(student_id, reply, "bot", routed_intent, sentiment)
+        return ChatResponse(
+            reply=reply, state="ROUTED", intent=routed_intent, sentiment=sentiment
+        )
+
     if routed_intent == "academics" and student:
         reply = (
             f"{prefix}{student['name']}, your academic snapshot is: CGPA {student['cgpa']}, "
@@ -668,6 +685,16 @@ def _route_lifecycle_message(
         )
 
     if routed_intent == "request_status":
+        if not student:
+            reply = (
+                f"{prefix}You are currently browsing as a Guest. "
+                "Please sign in with your verified Student ID to track your active withdrawal clearance pipeline and refund voucher."
+            )
+            _log_message(student_id, reply, "bot", routed_intent, sentiment)
+            return ChatResponse(
+                reply=reply, state="ROUTED", intent=routed_intent, sentiment=sentiment
+            )
+
         from .withdrawal_workflow import get_latest_withdrawal_status
         w_status = get_latest_withdrawal_status(student_id)
         if not w_status.get("has_request"):
@@ -927,11 +954,20 @@ def process_message(session_id: str, raw_message: str) -> ChatResponse:
         return routed_response
 
     if state == "ASK_REASON" and _is_greeting(raw_message):
-        reply = (
-            "Hello! I am here to help with your student activities. "
-            "You can ask about CGPA, attendance, exams, scholarships, grievances, "
-            "documents, fees, hostel status, internships, or withdrawals."
-        )
+        student = _fetch_student(student_id)
+        if not student:
+            reply = (
+                "Hello! I am your UniAssist Campus Counselor. You are currently browsing as a Guest. "
+                "You can ask general campus questions about attendance policies, fee structures, refunds, and academic rules. "
+                "To access your personal student records, attendance status, or withdrawal application, please sign in with your Student ID."
+            )
+        else:
+            first_name = (student.get("name") or "").split()[0] or "there"
+            reply = (
+                f"Hello {first_name}! I am here to help with your student activities. "
+                "You can ask about your CGPA, attendance, exams, scholarships, grievances, "
+                "documents, fees, hostel status, internships, or withdrawals."
+            )
         _log_message(student_id, reply, "bot", "help", "positive")
         return ChatResponse(
             reply=reply, state="ASK_REASON", intent="help", sentiment="positive"

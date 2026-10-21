@@ -37,6 +37,6 @@ async def send_message(request: Request, body: ChatRequest) -> ChatResponse:
         if not session_id:
             session_id = create_session(body.student_id)
     else:
-        session_id = create_session("STU001")
+        session_id = create_session("GUEST")
 
     return process_message(session_id, body.message)

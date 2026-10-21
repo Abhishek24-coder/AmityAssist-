@@ -48,13 +48,19 @@ async def get_policy_guidance(body: PolicyGuideRequest, request: Request) -> dic
     is_staff = body.is_staff or False
     staff_role = body.staff_role
     effective_sid = body.student_id
+    if effective_sid and str(effective_sid).strip().upper() in ("GUEST", "PUBLIC", "NONE", "NULL", ""):
+        effective_sid = None
 
-    # Check page_context for staff indicators
+    # Check page_context for staff indicators or public kiosk routes
+    route_name = ""
     if body.page_context and isinstance(body.page_context, dict):
-        if body.page_context.get("is_staff") or "/staff" in str(body.page_context.get("route", "")).lower():
+        route_name = str(body.page_context.get("route", "")).lower().strip()
+        if body.page_context.get("is_staff") or "/staff" in route_name:
             is_staff = True
             staff_role = staff_role or body.page_context.get("staff_role") or "Registrar Staff"
             effective_sid = None
+
+    is_public_page = bool(route_name and route_name in ("/", "/services", "/login", "/welcome"))
 
     auth_hdr = request.headers.get("Authorization", "")
     if auth_hdr.startswith("Bearer "):
@@ -66,20 +72,35 @@ async def get_policy_guidance(body: PolicyGuideRequest, request: Request) -> dic
                 is_staff = True
                 staff_role = staff_role or payload.get("staff_role") or "Registrar Staff"
                 effective_sid = None
-            elif not effective_sid and not is_staff and payload.get("role") == "student":
+            elif not is_staff and not is_public_page and body.student_id is not None and payload.get("role") == "student":
                 effective_sid = payload.get("sub")
         except Exception:
             pass
+
+    # Never attach student record if on a public screen or if caller explicitly sent null student_id
+    if is_public_page or body.student_id is None:
+        effective_sid = None
+
+    from ..services.nlp_service import detect_language
+    effective_language = body.language
+    det = detect_language(body.query)
+    if det == "hindi":
+        effective_language = "hi-IN"
+    elif det == "hinglish":
+        effective_language = "hi-Latn"
+    elif det == "english" and body.language != "hi-Latn" and body.language != "hi-IN":
+        effective_language = "en-IN"
 
     guidance = PolicySearchService.hybrid_guidance(
         query=body.query,
         student_id=effective_sid,
         page_context=body.page_context,
-        language=body.language,
+        language=effective_language,
         history=body.conversation_history,
         is_staff=is_staff,
         staff_role=staff_role,
     )
+    guidance["detected_language"] = effective_language
     return guidance
 
 

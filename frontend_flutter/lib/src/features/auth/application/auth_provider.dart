@@ -80,6 +80,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
         staffRole: staffRole,
         staffUsername: staffUsername,
       );
+    } else {
+      // Clear out any stale/orphaned student_id or staff credentials when not authenticated
+      _prefs.remove('student_id');
+      _prefs.remove('is_staff');
+      _prefs.remove('staff_role');
+      _prefs.remove('staff_username');
+      state = const AuthState();
     }
   }
 

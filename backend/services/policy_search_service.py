@@ -1165,13 +1165,20 @@ class PolicySearchService:
         )
         staff_designation = staff_role or (page_context.get("staff_role") if page_context else None) or "Registrar Staff"
 
-        # Retrieve student record if authenticated AND not a staff user
-        effective_student_id = student_id if not is_staff_user else None
-        if not effective_student_id and page_context and isinstance(page_context, dict) and not is_staff_user:
+        # Check page context for public routes
+        route_name = ""
+        if page_context and isinstance(page_context, dict):
+            route_name = str(page_context.get("route", "")).lower().strip()
+
+        is_public_page = bool(route_name and route_name in ("/", "/services", "/login", "/welcome"))
+
+        # Retrieve student record ONLY if authenticated, NOT on a public page, AND NOT a staff user
+        effective_student_id = None if (is_staff_user or is_public_page) else student_id
+        if not effective_student_id and page_context and isinstance(page_context, dict) and not is_staff_user and not is_public_page:
             effective_student_id = page_context.get("student_id")
 
         student: dict[str, Any] | None = None
-        if not is_staff_user and effective_student_id and str(effective_student_id).strip().upper() not in ("GUEST", "PUBLIC", "NONE", "NULL", ""):
+        if not is_staff_user and not is_public_page and effective_student_id and str(effective_student_id).strip().upper() not in ("GUEST", "PUBLIC", "NONE", "NULL", ""):
             clean_sid = str(effective_student_id).strip().upper()
             cur = conn.execute(
                 "SELECT id, name, course, branch, semester, attendance, cgpa, fee_status, fee_due FROM students WHERE UPPER(TRIM(id)) = ?",
@@ -1182,11 +1189,12 @@ class PolicySearchService:
                 student = dict(row)
 
         is_authenticated = student is not None
-        student_name = staff_designation if is_staff_user else ((student or {}).get("name", "").split()[0] if is_authenticated else "Student")
+        student_name = staff_designation if is_staff_user else ((student or {}).get("name", "").split()[0] if is_authenticated else "Guest")
+        greeting_prefix = f"{student_name}, " if is_authenticated else (f"{staff_designation}, " if is_staff_user else "")
         attendance = float((student or {}).get("attendance", 75.0))
 
         q_lower = query.lower()
-        q_clean = re.sub(r"[^\w\s]", " ", q_lower).strip()
+        q_clean = re.sub(r"[^\w\s\u0900-\u097F]", " ", q_lower).strip()
         words = q_clean.split()
         word_count = len(words)
 
@@ -1195,11 +1203,12 @@ class PolicySearchService:
         # =========================================================================
         is_pii_query = (
             any(w in q_lower for w in [
-                "stu002", "stu003", "stu004", "stu005", "rahul sharma", "other student", "another student",
+                "stu001", "stu002", "stu003", "stu004", "stu005", "aisha", "aisha sharma", "rahul sharma", "other student", "another student",
                 "private fee details", "display all student records", "all student records", "roll numbers in database",
                 "reveal student", "password or hash", "student password", "reveal password"
             ])
-            and any(k in q_lower for k in ["details", "records", "phone", "mobile", "password", "hash", "fee", "private", "display all", "reveal"])
+            and any(k in q_lower for k in ["details", "records", "phone", "mobile", "password", "hash", "fee", "private", "display all", "reveal", "attendance", "cgpa", "account"])
+            and not (is_authenticated and student and (str(student.get("id", "")).lower() in q_lower or (str(student.get("name", "")).lower().split()[0] in q_lower and "other" not in q_lower)))
         )
         if is_pii_query:
             pii_msg = (
@@ -1210,13 +1219,170 @@ class PolicySearchService:
                 "answer": pii_msg,
                 "domain": "Security & Data Privacy Guard",
                 "citations": [DEFAULT_POLICIES[0]],
-                "recommended_action": "View My Profile",
-                "action_url": "/profile",
+                "recommended_action": "Sign In" if not is_authenticated else "View My Profile",
+                "action_url": "/login" if not is_authenticated else "/profile",
                 "voice_speech_text": pii_msg,
                 "screen_instruction": None,
                 "highlight_target": None,
                 "engine": "UniAssist Policy Engine",
             }
+
+        # =========================================================================
+        # 00-ROLE-BASED PERSONAL RECORD ACCESS GUARD: Staff vs Authenticated Student vs Guest
+        # =========================================================================
+        is_personal_record_query = (
+            any(p in q_clean or p in q_lower for p in [
+                "my attendance", "meri attendance", "mera attendance", "mere attendance", "kitni attendance", "attendance kitni",
+                "मेरी अटेंडेंस", "मेरा अटेंडेंस", "अटेंडेंस कितनी", "कितनी अटेंडेंस", "उपस्थिति कितनी", "मेरी उपस्थिति", "मेरा हाजिरी", "मेरी हाजिरी",
+                "my fee", "my fees", "meri fee", "mera fee", "fees due", "fee due", "fee status", "kitni fee bachi", "baki fee",
+                "मेरी फीस", "मेरा फीस", "फीस कितनी", "बकाया फीस", "फीस का स्टेटस", "कितनी फीस बाकी", "फीस ड्यू",
+                "my cgpa", "mera cgpa", "my grade", "my grades", "mera grade", "my marks", "mera marks", "mere marks",
+                "मेरा सीजीपीए", "मेरी सीजीपीए", "मेरे मार्क्स", "मेरा रिजल्ट", "मेरे अंक",
+                "my status", "mera status", "my application", "meri application", "my withdrawal status", "mera withdrawal status",
+                "मेरा स्टेटस", "मेरी एप्लीकेशन", "मेरा विड्रॉल", "विड्रॉल स्टेटस",
+                "my refund status", "mera refund kitna", "my refund amount", "who am i", "my profile", "my account", "mera account",
+                "open my account", "aisha s account", "aisha account", "my admit card", "mera admit card",
+                "मेरा रिफंड", "मेरा अकाउंट", "मेरी प्रोफाइल", "मेरा एडमिट कार्ड"
+            ])
+            or (
+                not is_authenticated
+                and not is_staff_user
+                and any(p in q_clean for p in [
+                    "can i write semester exams with my current attendance",
+                    "can i write exam with my attendance",
+                    "can i give exam with my attendance",
+                    "am i eligible for exam with my attendance",
+                    "my clearance status",
+                    "check my status",
+                ])
+            )
+        )
+
+        if not is_authenticated and not is_staff_user and is_personal_record_query:
+            if language == "hi-IN":
+                guard_ans = (
+                    "आप वर्तमान में अतिथि (Guest) के रूप में UniAssist का उपयोग कर रहे हैं। "
+                    "अपनी व्यक्तिगत उपस्थिति (Attendance), सीजीपीए, बकाया फीस या आवेदन स्थिति देखने के लिए कृपया अपनी छात्र आईडी (Student ID) से लॉगिन करें।"
+                )
+                guard_v = "आप वर्तमान में गेस्ट मोड में हैं। अपनी व्यक्तिगत उपस्थिति, फीस या आवेदन स्थिति देखने के लिए कृपया अपनी स्टूडेंट आईडी से लॉगिन करें।"
+            elif language == "hi-Latn":
+                guard_ans = (
+                    "Aap filhaal Guest ke roop mein UniAssist use kar rahe hain. "
+                    "Apni personal attendance, CGPA, fee dues ya application clearance status check karne ke liye please Student ID se sign in karein."
+                )
+                guard_v = "Aap Guest mode mein hain. Apni personal attendance, fee dues ya application status dekhne ke liye please Student ID se sign in karein."
+            else:
+                guard_ans = (
+                    "You are currently browsing as a Guest. "
+                    "To view your personal attendance percentage, CGPA, fee dues, or application clearance status, please sign in with your verified Student ID."
+                )
+                guard_v = "You are currently browsing as a Guest. Please sign in with your Student ID to view your personal records."
+
+            return {
+                "answer": guard_ans,
+                "domain": "Student Account Authentication",
+                "citations": [DEFAULT_POLICIES[0]],
+                "recommended_action": "Sign In as Student",
+                "action_url": "/login",
+                "voice_speech_text": guard_v,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        if is_staff_user and is_personal_record_query:
+            if language == "hi-IN":
+                staff_personal_ans = (
+                    f"प्रशासनिक अधिकारी ({staff_designation}) के रूप में, आपके पास स्टाफ एडमिन पोर्टल का अधिकार है। "
+                    "किसी भी छात्र की व्यक्तिगत उपस्थिति, फीस स्थिति, या क्लीयरेंस रिकॉर्ड देखने के लिए कृपया स्टूडेंट रजिस्ट्री ('/staff/registry') में उनका रोल नंबर खोजें।"
+                )
+                staff_v = f"{staff_designation}, छात्रों की उपस्थिति या फीस देखने के लिए कृपया स्टूडेंट रजिस्ट्री में रोल नंबर सर्च करें।"
+            elif language == "hi-Latn":
+                staff_personal_ans = (
+                    f"Administrative officer ({staff_designation}) ke roop me aapke paas Staff Portal ka access hai. "
+                    "Kisi bhi student ki personal attendance, fee records, ya clearance dossier dekhne ke liye please Student Registry ('/staff/registry') me unka Roll Number search karein."
+                )
+                staff_v = f"{staff_designation}, students ki attendance ya fee records dekhne ke liye Student Registry me search karein."
+            else:
+                staff_personal_ans = (
+                    f"As an administrative staff member ({staff_designation}), you have staff portal access. "
+                    "To inspect any student's personal attendance, fee status, or clearance dossier, please search their Roll Number in the Student Registry (/staff/registry)."
+                )
+                staff_v = f"{staff_designation}, you can inspect student attendance and fees by searching their Roll Number in the Student Registry."
+
+            return {
+                "answer": staff_personal_ans,
+                "domain": "Staff Administration",
+                "citations": [],
+                "recommended_action": "Open Student Registry",
+                "action_url": "/staff/registry",
+                "voice_speech_text": staff_v,
+                "screen_instruction": None,
+                "highlight_target": None,
+                "engine": "UniAssist Policy Engine",
+            }
+
+        if is_authenticated and not is_staff_user:
+            if any(fq in q_clean for fq in ["my fee", "my fees", "meri fee", "mera fee", "fees due", "fee due", "fee status", "kitni fee bachi", "baki fee"]):
+                due = float(student.get("fee_due") or 0)
+                stat = student.get("fee_status", "Clear")
+                if language == "hi-IN":
+                    fee_ans = (
+                        f"{student_name}, आपकी वर्तमान फीस स्थिति '{stat}' है और कुल बकाया राशि ₹{due:,.0f} है। "
+                        "यदि कोई बकाया राशि है, तो आप स्टूडेंट डैशबोर्ड पर जाकर इसका ऑनलाइन भुगतान कर सकते हैं।"
+                    )
+                elif language == "hi-Latn":
+                    fee_ans = (
+                        f"{student_name}, aapka fee status '{stat}' hai aur outstanding dues ₹{due:,.0f} hain. "
+                        "Dues clear karne ke liye aap Student Dashboard par online payment kar sakte hain."
+                    )
+                else:
+                    fee_ans = (
+                        f"{student_name}, your recorded fee status is '{stat}' with outstanding dues of INR {due:,.0f}. "
+                        "You can review your fee ledger and complete payments directly on your Student Dashboard."
+                    )
+                return {
+                    "answer": fee_ans,
+                    "domain": "Fee Clearance & Accounts",
+                    "citations": [DEFAULT_POLICIES[2]],
+                    "recommended_action": "View Fee Ledger",
+                    "action_url": "/dashboard",
+                    "voice_speech_text": fee_ans,
+                    "screen_instruction": None,
+                    "highlight_target": None,
+                    "engine": "UniAssist Policy Engine",
+                }
+
+            if any(cq in q_clean for cq in ["my cgpa", "mera cgpa", "my grade", "my grades", "mera grade", "my marks", "mera marks"]):
+                cgpa_val = student.get("cgpa", "N/A")
+                sem_val = student.get("semester", "N/A")
+                course_val = student.get("course", "Degree Program")
+                if language == "hi-IN":
+                    cgpa_ans = (
+                        f"{student_name}, आपका वर्तमान संचयी ग्रेड प्वाइंट औसत (CGPA) **{cgpa_val}** है "
+                        f"({course_val}, सेमेस्टर {sem_val})। शैक्षणिक विवरण और मार्कशीट देखने के लिए डैशबोर्ड देखें।"
+                    )
+                elif language == "hi-Latn":
+                    cgpa_ans = (
+                        f"{student_name}, aapka current recorded CGPA **{cgpa_val}** hai "
+                        f"({course_val}, Semester {sem_val}). Marksheets aur academic progress ke liye Dashboard check karein."
+                    )
+                else:
+                    cgpa_ans = (
+                        f"{student_name}, your current recorded CGPA is **{cgpa_val}** "
+                        f"in {course_val} (Semester {sem_val}). You can review your detailed semester grade reports on your Dashboard."
+                    )
+                return {
+                    "answer": cgpa_ans,
+                    "domain": "Academic Records",
+                    "citations": [DEFAULT_POLICIES[0]],
+                    "recommended_action": "View Academic Records",
+                    "action_url": "/dashboard",
+                    "voice_speech_text": cgpa_ans,
+                    "screen_instruction": None,
+                    "highlight_target": None,
+                    "engine": "UniAssist Policy Engine",
+                }
 
         # =========================================================================
         # 00-DISCIPLINE: Institutional Misconduct, Bunking, Proxy & Cheating Guard
@@ -1948,6 +2114,25 @@ class PolicySearchService:
             and not any(w in q_lower for w in ["correction", "galat", "mistake", "theek"])
         )
         if is_below_attendance:
+            if is_staff_user:
+                staff_att_msg = (
+                    f"{staff_designation}, administrative guidelines under Attendance Ordinance ORD-ACAD-7.2:\n\n"
+                    "1. **75% Mandatory Cutoff**: Students must maintain a minimum 75% attendance for semester exam eligibility.\n"
+                    "2. **Dean's Condonation (60.0% to 74.9%)**: Deans may grant medical/representation condonation upon verification of Form AC-04.\n"
+                    "3. **Compulsory Debarment (<60%)**: Attendance below 60.0% requires compulsory debarment with zero exemption allowed.\n"
+                    "4. **Staff Roster Audit**: Verify medical dossiers, audit debarment lists, and manage student rosters via the Staff Portal (/staff)."
+                )
+                return {
+                    "answer": staff_att_msg,
+                    "domain": "Academics",
+                    "citations": [DEFAULT_POLICIES[0], DEFAULT_POLICIES[1]],
+                    "recommended_action": "Staff Admin Portal",
+                    "action_url": "/staff",
+                    "voice_speech_text": f"{staff_designation}, Ordinance ORD-ACAD-7.2 requires 75% attendance. Condonation applies between 60% and 74.9%. Debarment below 60%. Audit rosters on the Staff Portal.",
+                    "screen_instruction": None,
+                    "highlight_target": None,
+                    "engine": "UniAssist Policy Engine",
+                }
             below_att_msg = (
                 f"Under University Ordinance ORD-ACAD-7.2, if your attendance falls below the mandatory 75% threshold:\n"
                 "1. Attendance between 60.0% and 74.9%: You may apply for Dean's Attendance Condonation (Form AC-04) by submitting authentic medical certificates or official university representation letters at least 10 working days prior to examinations.\n"
@@ -4602,7 +4787,7 @@ class PolicySearchService:
                     "domain": "Staff Clearance & Withdrawal Queue",
                     "citations": [wth_policy, offset_policy],
                     "recommended_action": "Open Withdrawal Review Queue",
-                    "action_url": "/staff",
+                    "action_url": "/staff/withdrawals",
                     "voice_speech_text": staff_v,
                     "engine": "UniAssist Policy Engine",
                 }
@@ -4639,9 +4824,25 @@ class PolicySearchService:
                 f"\n\n👤 **Active Session ({student_name})**: Aap '/withdrawal' me jakar apni live clearance pipeline track kar sakte hain aur approved clearance slip download kar sakte hain."
             )
 
+            if is_staff_user:
+                wth_prefix = f"{staff_designation}, administrative guidelines for student withdrawal and fee refunds:\n\n"
+                wth_v_prefix = f"{staff_designation}, "
+                wth_prefix_hi = f"{staff_designation}, छात्र विड्रॉल एवं फीस रिफंड हेतु प्रशासनिक नियमावली:\n\n"
+                wth_prefix_latn = f"{staff_designation}, student withdrawal aur fee refunds ke liye administrative guidelines:\n\n"
+            elif is_authenticated:
+                wth_prefix = f"{student_name}, "
+                wth_v_prefix = f"{student_name}, "
+                wth_prefix_hi = f"{student_name}, "
+                wth_prefix_latn = f"{student_name}, "
+            else:
+                wth_prefix = ""
+                wth_v_prefix = ""
+                wth_prefix_hi = ""
+                wth_prefix_latn = ""
+
             if language == "hi-IN":
                 answer = (
-                    f"{student_name}, विश्वविद्यालय विड्रॉल और फीस रिफंड (अध्यादेश ORD-WTH-14.1 / UGC directives) की सत्यापित प्रक्रिया इस प्रकार है:\n\n"
+                    f"{wth_prefix_hi}विश्वविद्यालय विड्रॉल और फीस रिफंड (अध्यादेश ORD-WTH-14.1 / UGC directives) की सत्यापित प्रक्रिया इस प्रकार है:\n\n"
                     "1. **यूजीसी ट्यूशन फीस रिफंड स्लैब**:\n"
                     "   • प्रवेश अंतिम तिथि से 15 दिन या अधिक पूर्व: 100% रिफंड (अधिकतम ₹1,000 प्रोसेसिंग शुल्क काटकर)\n"
                     "   • 15 दिन से कम पूर्व: 90% रिफंड\n"
@@ -4657,10 +4858,10 @@ class PolicySearchService:
                     "4. **आवेदन एवं लाइव ट्रैकिंग**: कियोस्क पर नीचे दिए गए बटन ('/withdrawal/flow') से डिजिटल फॉर्म भरें और लाइव ट्रैकिंग करें। यदि किसी डेस्क पर 48 घंटे से अधिक का विलंब हो, तो शिकायत निवारण डेस्क ('/chat') पर तुरंत डिजिटल टिकट दर्ज करें।"
                     f"{guest_note_hi}"
                 )
-                voice_text = f"{student_name}, university withdrawal me UGC refund slabs, 10,000 caution deposit return, aur 4 clearance gates shamil hain: Library, conditional Hostel, Accounts smart offset aur Registrar notesheet review. Online apply karke live status track karein."
+                voice_text = f"{wth_v_prefix}विश्वविद्यालय विड्रॉल में यूजीसी रिफंड स्लैब, 10,000 कॉशन डिपॉजिट रिटर्न और 4 क्लीयरेंस गेट शामिल हैं: लाइब्रेरी, हॉस्टल, एकाउंट्स और रजिस्ट्रार नोटशीट रिव्यू। ऑनलाइन स्टेटस ट्रैक करें।"
             elif language == "hi-Latn":
                 answer = (
-                    f"{student_name}, university withdrawal aur fee refund (ORD-WTH-14.1 / UGC directives) ki verified process is prakaar hai:\n\n"
+                    f"{wth_prefix_latn}University withdrawal aur fee refund (ORD-WTH-14.1 / UGC directives) ki verified process is prakaar hai:\n\n"
                     "1. **UGC Tuition Refund Slabs**:\n"
                     "   • 15+ days prior to admission deadline: 100% refund (minus max ₹1,000 processing fee)\n"
                     "   • Less than 15 days prior: 90% refund\n"
@@ -4676,10 +4877,20 @@ class PolicySearchService:
                     "4. **Apply & Real-time Tracking**: Kiosk par '/withdrawal/flow' se apply karein aur real-time track karein. Agar koi desk 48 hours se zyada delay kare toh Grievance Desk (/chat) par direct SLA escalation raise karein."
                     f"{guest_note_latn}"
                 )
-                voice_text = f"{student_name}, university withdrawal me UGC refund slabs, 10,000 caution deposit return, aur 4 clearance gates shamil hain: Library, conditional Hostel, Accounts smart offset aur Registrar notesheet review. Bina physical office jaye live track karein."
+                voice_text = f"{wth_v_prefix}University withdrawal me UGC refund slabs, 10,000 caution deposit return, aur 4 clearance gates shamil hain: Library, conditional Hostel, Accounts smart offset aur Registrar notesheet review. Bina physical office jaye live track karein."
             else:
+                if is_staff_user:
+                    wth_intro = f"{staff_designation}, administrative guidelines for student withdrawal and fee refunds (Ordinance ORD-WTH-14.1 & UGC directives):\n\n"
+                    voice_text = f"{staff_designation}, administrative guidelines for student withdrawal include UGC tuition refund slabs, full 10,000 Rupees caution deposit return, and 4 clearance gates."
+                elif is_authenticated:
+                    wth_intro = f"{student_name}, the verified procedure for university withdrawal and fee refund (Ordinance ORD-WTH-14.1 & UGC directives) is:\n\n"
+                    voice_text = f"{student_name}, university withdrawal includes UGC tuition refund slabs, full 10,000 Rupees caution deposit return, and 4 clearance gates: Library, conditional Hostel, Accounts audit, and Registrar notesheet review. Track your live progress online."
+                else:
+                    wth_intro = "The verified procedure for university withdrawal and fee refund (Ordinance ORD-WTH-14.1 & UGC directives) is:\n\n"
+                    voice_text = "University withdrawal includes UGC tuition refund slabs, full 10,000 Rupees caution deposit return, and 4 clearance gates: Library, conditional Hostel, Accounts audit, and Registrar notesheet review. Track your live progress online."
+
                 answer = (
-                    f"{student_name}, the verified procedure for university withdrawal and fee refund (Ordinance ORD-WTH-14.1 & UGC directives) is:\n\n"
+                    f"{wth_intro}"
                     "1. **UGC Tuition Refund Slabs**:\n"
                     "   • 15+ days prior to admission deadline: 100% refund (minus max ₹1,000 processing fee)\n"
                     "   • Less than 15 days prior to deadline: 90% refund\n"
@@ -4695,14 +4906,16 @@ class PolicySearchService:
                     "4. **Application & Real-time Tracking**: Submit your application directly on this kiosk portal (/withdrawal/flow) and track each gate in real time. If any desk exceeds the 48-hour SLA, raise an instant digital ticket via the Grievance Desk (/chat)."
                     f"{guest_note_en}"
                 )
-                voice_text = f"{student_name}, university withdrawal includes UGC tuition refund slabs, full 10,000 Rupees caution deposit return, and 4 clearance gates: Library, conditional Hostel, Accounts audit, and Registrar notesheet review. Track your live progress online."
+
+            rec_act = "Review Withdrawal Queue" if is_staff_user else ("Start Withdrawal Procedure" if is_authenticated else "Sign In to Apply")
+            act_url = "/staff/withdrawals" if is_staff_user else ("/withdrawal" if is_authenticated else "/login")
 
             res = {
                 "answer": answer,
                 "domain": "Withdrawal & Refunds",
                 "citations": [wth_policy, offset_policy],
-                "recommended_action": "Start Withdrawal Procedure",
-                "action_url": "/withdrawal",
+                "recommended_action": rec_act,
+                "action_url": act_url,
                 "voice_speech_text": voice_text,
                 "engine": "UniAssist Policy Engine",
             }
@@ -4716,7 +4929,48 @@ class PolicySearchService:
                 "60%", "65%", "70%", "below 75", "short of 75", "74%", "shortage"
             ])
 
-            if not is_authenticated:
+            if is_staff_user:
+                if language == "hi-IN":
+                    staff_att_ans = (
+                        f"{staff_designation}, विश्वविद्यालय अध्यादेश ORD-ACAD-7.2 के तहत प्रशासनिक उपस्थिति नियमावली:\n\n"
+                        "1. **75% अनिवार्य सीमा**: छात्रों के परीक्षा प्रवेश पत्र (Admit Card) जारी करने हेतु न्यूनतम 75% कक्षा उपस्थिति अनिवार्य है।\n"
+                        "2. **डीन मेडिकल छूट (60.0% - 74.9%)**: 60% से 74.9% उपस्थिति वाले छात्रों के लिए डीन द्वारा फॉर्म AC-04 एवं सत्यापित मेडिकल दस्तावेजों के आधार पर छूट अनुमन्य की जा सकती है।\n"
+                        "3. **अनिवार्य डिबारमेंट (<60%)**: 60% से कम उपस्थिति वाले छात्रों का अनिवार्य निष्कासन (Debarment) किया जाता है।\n"
+                        "4. **प्रशासनिक समीक्षा**: स्टाफ सदस्य स्टाफ एडमिन पोर्टल ('/staff') पर जाकर छात्र उपस्थिति रोस्टर, मेडिकल प्रमाणपत्रों का ऑडिट, और डिबारमेंट सूची सत्यापित कर सकते हैं।"
+                    )
+                    staff_att_v = f"{staff_designation}, अध्यादेश ORD-ACAD-7.2 के तहत 75% उपस्थिति अनिवार्य है। 60 से 74.9% उपस्थिति पर फॉर्म AC-04 से डीन छूट अनुमन्य है। स्टाफ पोर्टल पर रोस्टर सत्यापित करें।"
+                elif language == "hi-Latn":
+                    staff_att_ans = (
+                        f"{staff_designation}, University Ordinance ORD-ACAD-7.2 ke mutabiq Administrative Attendance regulations:\n\n"
+                        "1. **75% Mandatory Cutoff**: Semester exams admit cards issue karne ke liye minimum 75% overall attendance mandatory hai.\n"
+                        "2. **Dean Condonation (60.0% - 74.9%)**: Form AC-04 aur verified hospital OPD slips ke basis par Dean medical condonation grant kar sakte hain.\n"
+                        "3. **Debarment (<60%)**: 60% se kam attendance par mandatory debarment apply hota hai.\n"
+                        "4. **Staff Audit**: Staff officers Staff Admin Portal ('/staff') par jakar departmental attendance rosters audit aur condonation requests sign-off kar sakte hain."
+                    )
+                    staff_att_v = f"{staff_designation}, Ordinance ORD-ACAD-7.2 requires 75% attendance. Dean condonation applies between 60% and 74.9%. Staff can audit rosters on Staff Portal."
+                else:
+                    staff_att_ans = (
+                        f"{staff_designation}, administrative guidelines under Attendance Ordinance ORD-ACAD-7.2:\n\n"
+                        "1. **75% Mandatory Cutoff**: Students must maintain a minimum 75% attendance in each registered course for semester exam admit card eligibility.\n"
+                        "2. **Dean's Condonation (60.0% to 74.9%)**: Deans may grant medical condonation upon verification of Form AC-04 and hospital OPD records submitted at least 10 days before exams.\n"
+                        "3. **Mandatory Debarment (<60%)**: Attendance below 60% requires compulsory debarment with zero exemption allowed.\n"
+                        "4. **Staff Roster Audit**: Authorized staff can verify medical certificates, process condonation approvals, and audit departmental attendance registries via the Staff Portal (/staff)."
+                    )
+                    staff_att_v = f"{staff_designation}, Ordinance ORD-ACAD-7.2 mandates 75% attendance. Condonation applies between 60% and 74.9% via Form AC-04. Audit rosters in Staff Portal."
+
+                return {
+                    "answer": staff_att_ans,
+                    "domain": "Staff Attendance Administration",
+                    "citations": [matching_clause],
+                    "recommended_action": "Staff Admin Portal",
+                    "action_url": "/staff",
+                    "voice_speech_text": staff_att_v,
+                    "screen_instruction": None,
+                    "highlight_target": None,
+                    "engine": "UniAssist Policy Engine",
+                }
+
+            elif not is_authenticated:
                 # Guest Mode / Walk-in Kiosk: Do NOT assume 75% attendance! State official ordinance rules & condonation steps.
                 if language == "hi-IN":
                     if is_medical_missed_query:

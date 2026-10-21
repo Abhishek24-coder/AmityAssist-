@@ -204,13 +204,42 @@ def detect_language(text: str) -> Language:
     if re.search(r"[\u0900-\u097F]", text):
         return "hindi"
 
-    hinglish_markers = {
-        "bata", "batao", "kya", "kaise", "kitna", "kitni", "mera", "meri",
-        "mujhe", "chahiye", "karna", "karo", "hai", "fees", "madad",
-        "shikayat", "pareshani", "college", "padhai", "nahi", "hoga",
-        "sahi", "problem", "status", "help", "service",
-    }
-    if set(_tokenize(text)) & hinglish_markers:
+    indic_roman_markers = frozenset({
+        # Interrogatives
+        "kya", "kaise", "kahan", "kaha", "kab", "kyun", "kyu", "kis", "kise", "kisko",
+        "kitna", "kitni", "kitne", "kaun", "kaunsa", "kaunsi",
+        # Pronouns
+        "mera", "meri", "mere", "mujhe", "mujhko", "main", "hum", "hume", "humein",
+        "aap", "aapka", "aapki", "aapke", "tum", "tumhara", "tumhari", "tumhare",
+        "tera", "teri", "tere", "uska", "uski", "uske", "unka", "unki", "unke",
+        # Verbs & Conjugations
+        "hai", "hain", "hoon", "hun",
+        "karna", "karein", "kare", "karo", "karun", "karta", "karti", "karte",
+        "hoga", "hogi", "hoge", "hona", "hote", "hoti", "hota",
+        "chahiye", "chaho", "chahta", "chahti",
+        "bata", "batao", "bataiye", "batana", "bol", "bolo", "boliye", "bolna",
+        "dekh", "dekho", "dekhiye", "dekhna", "suno", "suniye",
+        "dijiye", "dunga", "dungi", "lijiye", "lunga",
+        "milega", "milegi", "milege", "milna", "milta", "milti",
+        "sakta", "sakti", "sakte", "sako",
+        "lagta", "lagti", "lagte", "lagega", "lagegi",
+        "raha", "rahi", "rahe", "raho",
+        "jaana", "jana", "jayega", "jayegi", "jaunga",
+        "chhodna", "chhodani", "chhodne", "chhod",
+        "karwana", "karwani", "karwane",
+        "pucha", "pucho", "poocho", "poochna",
+        # Negation, Particles & Connectors
+        "nahi", "nahin", "mat",
+        "bhi", "toh", "lekin", "magar",
+        "mein", "ka", "ke", "ki", "ko", "se",
+        "kuch", "kuchh", "sabhi", "koi",
+        # Domain terms & Vocatives
+        "wapas", "paise", "shikayat", "pareshani", "samasya", "padhai", "chhutti",
+        "bhai", "sahab", "sirji", "madad", "sahayata", "bunk", "debar",
+    })
+
+    tokens = set(_tokenize(text))
+    if tokens & indic_roman_markers:
         return "hinglish"
     return "english"
 

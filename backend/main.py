@@ -50,7 +50,7 @@ app = FastAPI(
 )
 
 # ── Static Files ──────────────────────────────────────────────────────────────
-forms_dir = Path("backend/static/forms")
+forms_dir = Path(__file__).resolve().parent / "static" / "forms"
 forms_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/forms", StaticFiles(directory=str(forms_dir)), name="forms")
 

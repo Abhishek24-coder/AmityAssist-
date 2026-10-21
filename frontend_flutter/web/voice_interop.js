@@ -230,3 +230,65 @@ if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
     };
   }
 }
+
+// Native Document File Picker Interop for Flutter Web
+window.uniassistFilePicker = {
+  pickFile: function(accept, callback) {
+    try {
+      var input = document.createElement('input');
+      input.type = 'file';
+      input.accept = accept || '.pdf,.jpg,.jpeg,.png,.docx';
+      input.style.display = 'none';
+      document.body.appendChild(input);
+
+      input.onchange = function(e) {
+        var file = e.target.files && e.target.files[0];
+        if (!file) {
+          try { document.body.removeChild(input); } catch(ex){}
+          if (callback) callback(null);
+          return;
+        }
+
+        var reader = new FileReader();
+        reader.onload = function(evt) {
+          try {
+            var arrayBuffer = evt.target.result;
+            var uint8 = new Uint8Array(arrayBuffer);
+            try { document.body.removeChild(input); } catch(ex){}
+            if (callback) {
+              callback({
+                name: file.name,
+                size: file.size,
+                type: file.type || 'application/octet-stream',
+                bytes: uint8
+              });
+            }
+          } catch(err) {
+            console.error('[UniAssist FilePicker] Error processing file:', err);
+            try { document.body.removeChild(input); } catch(ex){}
+            if (callback) callback(null);
+          }
+        };
+
+        reader.onerror = function(err) {
+          console.error('[UniAssist FilePicker] FileReader error:', err);
+          try { document.body.removeChild(input); } catch(ex){}
+          if (callback) callback(null);
+        };
+
+        reader.readAsArrayBuffer(file);
+      };
+
+      input.oncancel = function() {
+        try { document.body.removeChild(input); } catch(ex){}
+        if (callback) callback(null);
+      };
+
+      input.click();
+    } catch(err) {
+      console.error('[UniAssist FilePicker] Exception:', err);
+      if (callback) callback(null);
+    }
+  }
+};
+

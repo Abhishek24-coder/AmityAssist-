@@ -11,7 +11,6 @@ import '../../../core/theme/kiosk_theme.dart';
 import '../../../core/services/tts_service.dart';
 import '../../../core/services/stt_service.dart';
 import '../../../core/services/page_context_service.dart';
-import '../../../core/services/offline_cache_service.dart';
 import '../../auth/application/auth_provider.dart';
 import '../../../core/widgets/formatted_markdown_text.dart';
 import 'chat_screen.dart';
@@ -555,9 +554,13 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
   }
 
   void _selectLanguageAndGreet(String langCode) {
+    final route = widget.currentRoute ?? ref.read(pageContextProvider).route;
+    final isPublicRoute = route == '/' || route == '/services' || route == '/login' || route == '/welcome' || route.isEmpty;
     final auth = ref.read(authProvider);
-    final isStaff = auth.isStaff || (widget.currentRoute != null && widget.currentRoute!.contains('staff'));
+    final isAuth = auth.isAuthenticated && !isPublicRoute;
+    final isStaff = isAuth && (auth.isStaff || route.contains('staff'));
     final staffRole = auth.staffRole ?? 'Registrar Staff';
+    final studentId = (isAuth && !isStaff) ? auth.studentId : null;
 
     String greeting;
     if (isStaff) {
@@ -568,13 +571,22 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
       } else {
         greeting = 'Hello! I am your University Administrative Digital Counselor. As $staffRole, you can ask about pending student withdrawal queues, notesheets review, OCR document audit, or ordinance verifications. How can I assist you today?';
       }
-    } else {
+    } else if (isAuth && studentId != null) {
       if (langCode == 'hi-IN') {
-        greeting = 'नमस्ते! मैं आपका डिजिटल यूनिवर्सिटी काउंसलर हूँ। आप मुझसे फीस, अटेंडेंस, विड्रॉल या किसी भी नियम के बारे में पूछ सकते हैं। बताइए, मैं आपकी क्या सहायता करूँ?';
+        greeting = 'नमस्ते! मैं आपका डिजिटल यूनिवर्सिटी काउंसलर हूँ। आप मुझसे अपनी उपस्थिति, फीस स्थिति, विड्रॉल प्रक्रिया या किसी भी नियम के बारे में पूछ सकते हैं। बताइए, मैं आपकी क्या सहायता करूँ?';
       } else if (langCode == 'hi-Latn') {
-        greeting = 'Hello! Main aapka University Counselor hoon. Attendance, exam rules, withdrawal refund ya kisi bhi policy ke baare mein poochiye! Main aapki kya help karoon?';
+        greeting = 'Hello! Main aapka University Counselor hoon. Apni attendance, exam rules, fee status, withdrawal refund ya kisi bhi policy ke baare mein poochiye! Main aapki kya help karoon?';
       } else {
-        greeting = 'Hello! I am your University Digital Counselor. You can ask me about attendance rules, fee refunds, withdrawal clearance, or any campus policy. How can I help you today?';
+        greeting = 'Hello! I am your University Digital Counselor. You can ask me about your attendance, fee status, withdrawal clearance, or any campus policy. How can I help you today?';
+      }
+    } else {
+      // Unauthenticated Guest
+      if (langCode == 'hi-IN') {
+        greeting = 'नमस्ते! मैं UniAssist का आधिकारिक विश्वविद्यालय AI परामर्शदाता हूँ। आप मुझसे विश्वविद्यालय नियमावली, उपस्थिति नियम (75%), फीस रिफंड स्लैब और सभी 31 फॉर्मों के बारे में जानकारी प्राप्त कर सकते हैं। व्यक्तिगत उपस्थिति या आवेदन देखने के लिए कृपया लॉगिन करें।';
+      } else if (langCode == 'hi-Latn') {
+        greeting = 'Namaste! Main UniAssist ka official university AI counselor hoon. Aap mujhse university ordinances, attendance rules (75%), fee refund slabs aur sabhi 31 forms ke baare me pooch sakte hain. Apne personal records dekhne ke liye please login karein.';
+      } else {
+        greeting = 'Welcome to UniAssist! I am your University Policy and Procedures AI Counselor. You can ask me about institutional ordinances, 75% attendance rules, fee refund slabs, and university forms. To view your personal academic records, please sign in.';
       }
     }
 
@@ -648,17 +660,18 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
 
     try {
       final dio = ref.read(apiClientProvider);
+      final route = widget.currentRoute ?? ref.read(pageContextProvider).route;
+      final isPublicRoute = route == '/' || route == '/services' || route == '/login' || route == '/welcome' || route.isEmpty;
       final auth = ref.read(authProvider);
-      final prefs = ref.read(sharedPreferencesProvider);
-      final isStaff = auth.isStaff || (widget.currentRoute != null && widget.currentRoute!.contains('staff'));
-      final studentId = isStaff ? null : (auth.studentId ?? prefs.getString('student_id'));
-      final staffRole = auth.staffRole ?? (isStaff ? 'Registrar Staff' : null);
-      final staffUsername = auth.staffUsername ?? (isStaff ? 'Staff' : null);
+      final isAuth = auth.isAuthenticated && !isPublicRoute;
+      final isStaff = isAuth && (auth.isStaff || route.contains('staff'));
+      final studentId = (isAuth && !isStaff) ? auth.studentId : null;
+      final staffRole = isStaff ? (auth.staffRole ?? 'Registrar Staff') : null;
+      final staffUsername = isStaff ? (auth.staffUsername ?? 'Staff') : null;
 
-      final pageContext = widget.currentRoute != null
-          ? PageContextState.fromRoute(widget.currentRoute!)
-          : ref.read(pageContextProvider);
+      final pageContext = PageContextState.fromRoute(route);
       final pageContextJson = pageContext.toJson();
+      pageContextJson['route'] = route;
       if (isStaff) {
         pageContextJson['is_staff'] = true;
         pageContextJson['staff_role'] = staffRole;
@@ -666,6 +679,10 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
         pageContextJson.remove('student_id');
       } else if (studentId != null && studentId.isNotEmpty) {
         pageContextJson['student_id'] = studentId;
+        pageContextJson['is_staff'] = false;
+      } else {
+        pageContextJson.remove('student_id');
+        pageContextJson['is_staff'] = false;
       }
 
       // Extract sliding window of recent conversation turns (max 6 turns before current query)
@@ -694,16 +711,22 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
         'conversation_history': historyPayload,
       };
 
+      final requestOptions = (isAuth && studentId != null)
+          ? null
+          : Options(headers: {'Authorization': ''});
+
       Response resp;
       try {
         resp = await dio.post(
           '/voice/query',
           data: requestData,
+          options: requestOptions,
         );
       } catch (_) {
         resp = await dio.post(
           '/policy/guide',
           data: requestData,
+          options: requestOptions,
         );
       }
 
@@ -723,7 +746,17 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
             ? (data['clarification_options'] as List)
             : const [];
 
+        final detectedLang = data['detected_language']?.toString() ??
+            (data['speech_params'] is Map ? data['speech_params']['lang']?.toString() : null) ??
+            data['language']?.toString();
+
         setState(() {
+          if (detectedLang != null &&
+              (detectedLang == 'hi-IN' ||
+                  detectedLang == 'hi-Latn' ||
+                  detectedLang == 'en-IN')) {
+            _selectedLanguage = detectedLang;
+          }
           _conversationHistory.add(_VoiceChatTurn(
             isUser: false,
             text: (speak && speech.isNotEmpty) ? speech : answer,
@@ -750,7 +783,7 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
         }
 
         if (speak && speech.isNotEmpty) {
-          _speakGuidance(speech);
+          _speakGuidance(speech, lang: detectedLang);
         }
       }
     } catch (e) {
@@ -828,10 +861,11 @@ class _PolicyVoiceTabState extends ConsumerState<_PolicyVoiceTab> {
     );
   }
 
-  void _speakGuidance(String text) {
+  void _speakGuidance(String text, {String? lang}) {
     if (text.isEmpty) return;
     setState(() => _isSpeaking = true);
-    final targetLang = _selectedLanguage == 'hi-Latn' ? 'en-IN' : _selectedLanguage;
+    final chosen = lang ?? _selectedLanguage;
+    final targetLang = chosen == 'hi-Latn' ? 'en-IN' : chosen;
     WebVoiceBridge.speak(
       text,
       lang: targetLang,
