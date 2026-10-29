@@ -5,7 +5,12 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/api_client.dart';
 import '../../../core/api_config.dart';
 import '../../../core/theme/kiosk_theme.dart';
+import '../../auth/application/auth_provider.dart';
 import 'digital_signature_dialog.dart';
+
+extension AuthStateRoleExtension on AuthState {
+  String? get role => staffRole;
+}
 
 class StaffNotesheetScreen extends ConsumerStatefulWidget {
   const StaffNotesheetScreen({super.key});
@@ -58,11 +63,12 @@ class _StaffNotesheetScreenState extends ConsumerState<StaffNotesheetScreen> {
   Future<void> _performAction(String refNo, String action, String stage, {String? customComments}) async {
     try {
       final dio = ref.read(apiClientProvider);
+      final officerName = ref.read(authProvider).staffUsername ?? 'Senior Administrative Officer';
       final res = await dio.post(
         '/notesheets/$refNo/action',
         data: {
-          'officer_id': 'STAFF_CURRENT',
-          'officer_name': 'Senior Administrative Officer',
+          'officer_id': officerName,
+          'officer_name': officerName,
           'role': stage,
           'action': action,
           'comments': customComments ?? 'Signed and processed via Staff Digital Notesheet Cockpit',
@@ -99,19 +105,337 @@ class _StaffNotesheetScreenState extends ConsumerState<StaffNotesheetScreen> {
     }
   }
 
-  void _openSignatureFlow(String refNo, String stage) async {
+  Future<void> _handleAction(BuildContext context, Map<String, dynamic> notesheet, String action) async {
+    final refNo = notesheet['reference_no']?.toString() ?? '';
+    final stage = (notesheet['current_stage'] ?? 'SUPERVISOR').toString().toUpperCase();
+    final userRole = ref.read(authProvider).role ?? stage;
+    final officerName = ref.read(authProvider).staffUsername ?? 'Authorized Officer';
+
+    if (action == 'REJECT') {
+      final commentsController = TextEditingController();
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.red),
+              SizedBox(width: 8),
+              Text('Confirm Rejection', style: TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Are you sure you want to reject notesheet $refNo? This will halt the approval hierarchy.'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: commentsController,
+                decoration: const InputDecoration(
+                  labelText: 'Rejection Reason / Comments',
+                  border: OutlineInputBorder(),
+                  hintText: 'e.g. Incomplete supporting transcripts.',
+                ),
+                maxLines: 2,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Confirm Reject'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed == true) {
+        await _performAction(
+          refNo,
+          'REJECT',
+          userRole,
+          customComments: commentsController.text.trim().isNotEmpty
+              ? commentsController.text.trim()
+              : 'Rejected at $stage stage by $userRole ($officerName)',
+        );
+      }
+      return;
+    }
+
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (ctx) => DigitalSignatureDialog(
-        officerName: 'Dr. Suresh Sharma',
-        officerRole: stage,
+        officerName: officerName,
+        officerRole: userRole,
         stage: stage,
       ),
     );
 
     if (result != null) {
       final comments = "${result['comments']} [${result['signature']}]";
-      _performAction(refNo, stage == 'VC' ? 'APPROVE' : 'FORWARD', stage, customComments: comments);
+      await _performAction(refNo, action, userRole, customComments: comments);
+    }
+  }
+
+  void _showInFlightEditDialog(BuildContext context, Map<String, dynamic> notesheet) {
+    final refNo = notesheet['reference_no']?.toString() ?? '';
+    final content = notesheet['content'] is Map ? Map<String, dynamic>.from(notesheet['content'] as Map) : <String, dynamic>{};
+    final stage = (notesheet['current_stage'] ?? 'SUPERVISOR').toString().toUpperCase();
+    final userRole = ref.read(authProvider).role ?? stage;
+    final officerName = ref.read(authProvider).staffUsername ?? 'Staff Officer';
+
+    String selectedField = content.keys.isNotEmpty ? content.keys.first : 'course_code';
+    final valueController = TextEditingController(text: content[selectedField]?.toString() ?? '');
+    final reasonController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.edit_note_rounded, color: Colors.blue.shade800),
+                ),
+                const SizedBox(width: 10),
+                const Text('In-Flight Collaborative Edit', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: SizedBox(
+              width: 500,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('File Ref: $refNo • Current Stage: $stage', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    const SizedBox(height: 16),
+                    const Text('Select Field to Correct', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    const SizedBox(height: 6),
+                    if (content.isNotEmpty)
+                      DropdownButtonFormField<String>(
+                        initialValue: selectedField,
+                        decoration: const InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                        items: content.keys.map((k) => DropdownMenuItem(value: k, child: Text(k.replaceAll('_', ' ').toUpperCase()))).toList(),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setDialogState(() {
+                              selectedField = val;
+                              valueController.text = content[val]?.toString() ?? '';
+                            });
+                          }
+                        },
+                      )
+                    else
+                      TextField(
+                        decoration: const InputDecoration(labelText: 'Field Name', border: OutlineInputBorder()),
+                        onChanged: (val) => selectedField = val.trim(),
+                      ),
+                    const SizedBox(height: 14),
+                    const Text('Updated Value', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: valueController,
+                      decoration: const InputDecoration(
+                        hintText: 'Enter corrected value (e.g. CSE101)',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    const Text('Mandatory Audit Justification (Min 5 chars)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFFB45309))),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: reasonController,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        hintText: 'e.g. Corrected course code typo from CS101 to standard CSE101',
+                        border: OutlineInputBorder(),
+                        filled: true,
+                        fillColor: Color(0xFFFFFBEB),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+                onPressed: () async {
+                  final reason = reasonController.text.trim();
+                  if (reason.length < 5) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('A detailed audit reason (at least 5 characters) is mandatory.'),
+                        backgroundColor: AppColors.urgentRed,
+                      ),
+                    );
+                    return;
+                  }
+                  Navigator.pop(ctx);
+                  try {
+                    final dio = ref.read(apiClientProvider);
+                    final res = await dio.post(
+                      '/notesheets/$refNo/edit-field',
+                      data: {
+                        'officer_id': officerName,
+                        'officer_role': userRole,
+                        'field_name': selectedField,
+                        'new_value': valueController.text.trim(),
+                        'reason': reason,
+                      },
+                    );
+                    if (mounted) {
+                      final msg = res.data is Map ? res.data['message']?.toString() : null;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(msg ?? 'Field updated with audit annotation.'),
+                          backgroundColor: AppColors.successGreen,
+                        ),
+                      );
+                      _fetchNotesheets();
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Failed to update field: $e'),
+                          backgroundColor: AppColors.urgentRed,
+                        ),
+                      );
+                    }
+                  }
+                },
+                child: const Text('Apply In-Flight Edit'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildActionControls(BuildContext context, Map<String, dynamic> notesheet, WidgetRef ref) {
+    final currentStage = (notesheet['current_stage'] ?? 'SUPERVISOR').toString().toUpperCase();
+    final status = (notesheet['status'] ?? 'IN_REVIEW').toString().toUpperCase();
+    final userRole = ref.watch(authProvider).role ?? 'Staff';
+
+    // If already approved or rejected, render completed status badge
+    if (status == 'APPROVED') {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
+        child: const Row(
+          children: [
+            Icon(Icons.verified_rounded, color: Colors.green),
+            SizedBox(width: 8),
+            Text(
+              'Notesheet Completed: Executive Seal Applied by Vice Chancellor.',
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Check if current logged-in user matches the stage authority
+    final isMyTurn = (currentStage == 'SUPERVISOR' && userRole == 'Supervisor') ||
+                     (currentStage == 'HOD' && userRole == 'HOD') ||
+                     (currentStage == 'HOI' && (userRole == 'Dean' || userRole == 'HOI')) ||
+                     (currentStage == 'PRO_VC' && userRole == 'Pro-VC') ||
+                     (currentStage == 'VC' && userRole == 'Vice Chancellor') ||
+                     userRole == 'Administrator';
+
+    if (!isMyTurn) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(8)),
+        child: Row(
+          children: [
+            const Icon(Icons.lock_clock_rounded, color: Colors.orange),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Awaiting sign-off by $currentStage authority. You are logged in as $userRole (View Only).',
+                style: const TextStyle(fontSize: 12, color: Colors.brown),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Active Buttons for Authorized Officer
+    final isFinalStage = (currentStage == 'VC');
+    final nextStageLabel = switch (currentStage) {
+      'SUPERVISOR' => 'Forward to HOD',
+      'HOD' => 'Forward to Dean (HOI)',
+      'HOI' => 'Forward to Pro-VC',
+      'PRO_VC' => 'Forward to Vice Chancellor',
+      _ => 'Apply Final Approval Seal',
+    };
+
+    return Row(
+      children: [
+        // 1. In-Flight Edit Button (For HOD and above)
+        if (['HOD', 'HOI', 'PRO_VC', 'VC'].contains(currentStage))
+          OutlinedButton.icon(
+            onPressed: () => _showInFlightEditDialog(context, notesheet),
+            icon: const Icon(Icons.edit_note_rounded, size: 18),
+            label: const Text('Correct Typo / Edit'),
+            style: OutlinedButton.styleFrom(foregroundColor: Colors.blue.shade800),
+          ),
+        const Spacer(),
+        // 2. Reject Button
+        TextButton.icon(
+          onPressed: () => _handleAction(context, notesheet, 'REJECT'),
+          icon: const Icon(Icons.close_rounded, color: Colors.red),
+          label: const Text('Reject', style: TextStyle(color: Colors.red)),
+        ),
+        const SizedBox(width: 8),
+        // 3. Sign & Advance / Seal Button
+        FilledButton.icon(
+          onPressed: () => _handleAction(context, notesheet, isFinalStage ? 'APPROVE' : 'FORWARD'),
+          icon: Icon(isFinalStage ? Icons.verified_rounded : Icons.arrow_forward_rounded, size: 18),
+          label: Text(nextStageLabel),
+          style: FilledButton.styleFrom(backgroundColor: isFinalStage ? Colors.green.shade700 : AppColors.primary),
+        ),
+      ],
+    );
+  }
+
+  void _openSignatureFlow(String refNo, String stage) async {
+    final userRole = ref.read(authProvider).role ?? stage;
+    final officerName = ref.read(authProvider).staffUsername ?? 'Dr. Suresh Sharma';
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => DigitalSignatureDialog(
+        officerName: officerName,
+        officerRole: userRole,
+        stage: stage,
+      ),
+    );
+
+    if (result != null) {
+      final comments = "${result['comments']} [${result['signature']}]";
+      _performAction(refNo, stage == 'VC' ? 'APPROVE' : 'FORWARD', userRole, customComments: comments);
     }
   }
 
@@ -1019,46 +1343,42 @@ class _StaffNotesheetScreenState extends ConsumerState<StaffNotesheetScreen> {
                                     borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
                                     border: Border(top: BorderSide(color: Colors.grey.shade200)),
                                   ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
                                     children: [
-                                      OutlinedButton.icon(
-                                        icon: const Icon(Icons.download_rounded, size: 16, color: AppColors.amityBlue),
-                                        label: const Text('Download DOCX'),
-                                        onPressed: () {
-                                          final url = ApiConfig.fullUrl('/api/notesheets/$refNo/docx');
-                                          launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-                                        },
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.end,
+                                        children: [
+                                          OutlinedButton.icon(
+                                            icon: const Icon(Icons.download_rounded, size: 16, color: AppColors.amityBlue),
+                                            label: const Text('Download DOCX'),
+                                            onPressed: () {
+                                              final url = ApiConfig.fullUrl('/api/notesheets/$refNo/docx');
+                                              launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                                            },
+                                          ),
+                                          const SizedBox(width: 10),
+                                          OutlinedButton.icon(
+                                            icon: const Icon(Icons.picture_as_pdf_rounded, size: 16, color: Colors.red),
+                                            label: const Text('Download PDF', style: TextStyle(color: Colors.red)),
+                                            onPressed: () {
+                                              final url = ApiConfig.fullUrl('/api/notesheets/$refNo/pdf');
+                                              launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                                            },
+                                          ),
+                                          const SizedBox(width: 10),
+                                          FilledButton.tonalIcon(
+                                            icon: const Icon(Icons.edit_document, size: 16),
+                                            label: const Text('Full Word View & Edit'),
+                                            onPressed: () => _showFullWordDocumentDialog(ns is Map ? Map<String, dynamic>.from(ns) : <String, dynamic>{}),
+                                          ),
+                                        ],
                                       ),
-                                      const SizedBox(width: 10),
-                                      OutlinedButton.icon(
-                                        icon: const Icon(Icons.picture_as_pdf_rounded, size: 16, color: Colors.red),
-                                        label: const Text('Download PDF', style: TextStyle(color: Colors.red)),
-                                        onPressed: () {
-                                          final url = ApiConfig.fullUrl('/api/notesheets/$refNo/pdf');
-                                          launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-                                        },
-                                      ),
-                                      const SizedBox(width: 10),
-                                      FilledButton.tonalIcon(
-                                        icon: const Icon(Icons.edit_document, size: 16),
-                                        label: const Text('Full Word View & Edit'),
-                                        onPressed: () => _showFullWordDocumentDialog(ns),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      OutlinedButton.icon(
-                                        icon: const Icon(Icons.close, color: Colors.red, size: 16),
-                                        label: const Text('Reject', style: TextStyle(color: Colors.red)),
-                                        onPressed: status == 'IN_REVIEW' ? () => _performAction(refNo, 'REJECT', stage) : null,
-                                      ),
-                                      const SizedBox(width: 12),
-                                      FilledButton.icon(
-                                        style: FilledButton.styleFrom(
-                                          backgroundColor: stage == 'VC' ? AppColors.successGreen : AppColors.amityBlue,
-                                        ),
-                                        icon: Icon(stage == 'VC' ? Icons.verified : Icons.draw_rounded, size: 18),
-                                        label: Text(stage == 'VC' ? 'Sign & Final Approve' : 'Add Signature & Forward'),
-                                        onPressed: status == 'IN_REVIEW' ? () => _openSignatureFlow(refNo, stage) : null,
+                                      const SizedBox(height: 14),
+                                      _buildActionControls(
+                                        context,
+                                        ns is Map ? Map<String, dynamic>.from(ns) : <String, dynamic>{},
+                                        ref,
                                       ),
                                     ],
                                   ),

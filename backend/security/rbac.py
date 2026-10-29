@@ -1,44 +1,123 @@
-"""Role-based access control helpers."""
-
+# ==============================================================================
+# UniAssist — Role-Based Access Control (RBAC) Specification
+# Lead Architect: Abhishek Shrivastava
+# ==============================================================================
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Dict, Set
 
 from fastapi import HTTPException, Request, status
 
 from .jwt import decode_access_token
 
-
-ROLE_PERMISSIONS: dict[str, set[str]] = {
+# Complete 6-Tier Academic Hierarchy + Isolated Desk Officers
+ROLE_PERMISSIONS: Dict[str, Set[str]] = {
+    # ── Tier 1: Student ───────────────────────────────────────────────────────
     "Student": {
-        "withdrawal:read",
+        "withdrawal:read_own",
         "withdrawal:create",
         "documents:upload",
-        "profile:read",
+        "profile:read_own",
+        "grievance:create",
+        "grievance:read_own",
     },
-    "Department Coordinator": {
-        "withdrawal:read",
-        "clearance:update",
-        "grievance:update",
+    # ── Tier 2: Specialized Desk Officers (Isolated Clearances) ───────────────
+    "Librarian": {
+        "clearance:read_library",
+        "clearance:sign_library",
+        "documents:read_assigned",
+    },
+    "Hostel Warden": {
+        "clearance:read_hostel",
+        "clearance:sign_hostel",
+        "documents:read_assigned",
+    },
+    "Accounts Officer": {
+        "clearance:read_accounts",
+        "clearance:sign_accounts",
+        "refund:calculate",
+        "refund:disburse",
+        "bank_proof:read_unmasked",     # Only Finance can see unmasked cheques
+        "deposit_offset:approve",
     },
     "Registrar": {
-        "withdrawal:read",
-        "withdrawal:update",
+        "clearance:read_all",
+        "clearance:final_seal",
         "procedure:manage",
+        "status:update_official",
     },
-    "Finance Department": {
-        "withdrawal:read",
-        "refund:update",
-        "clearance:update",
+    # ── Tier 3: Faculty Supervisor / Coordinator ──────────────────────────────
+    "Supervisor": {
+        "notesheet:create",
+        "notesheet:read_assigned",
+        "notesheet:sign_tier1",
+        "student:view_attendance",
     },
+    # ── Tier 4: Head of Department (HOD) ──────────────────────────────────────
+    "HOD": {
+        "notesheet:read_department",
+        "notesheet:sign_tier2",
+        "notesheet:edit_inflight",      # Allowed to correct course codes/typos
+        "accreditation:view_dept",
+        "student:view_attendance",
+    },
+    # ── Tier 5: Head of Institution (HOI) / Dean ──────────────────────────────
+    "Dean": {
+        "notesheet:read_institution",
+        "notesheet:sign_tier3",
+        "notesheet:edit_inflight",      # Allowed to annotate with audit trail
+        "grievance:resolve_escalated",
+        "accreditation:view_inst",
+        "student:status_proctorial",
+    },
+    # ── Tier 6: Executive Officers (Pro-VC & Vice Chancellor) ─────────────────
+    "Pro-VC": {
+        "notesheet:read_all",
+        "notesheet:sign_tier4",
+        "notesheet:edit_inflight",
+        "accreditation:view_all",
+    },
+    "Vice Chancellor": {
+        "notesheet:read_all",
+        "notesheet:final_seal",         # Highest executive approval seal
+        "notesheet:edit_inflight",
+        "university:executive_override",
+    },
+    # ── Super Administrator (System & IT Maintenance) ─────────────────────────
     "Administrator": {
-        "withdrawal:read",
-        "withdrawal:update",
-        "procedure:manage",
         "users:manage",
-        "audit:read",
+        "system:configure",
+        "institution:white_label",
+        "audit:read_full",
     },
 }
+
+# Mapping hierarchical approval stages to required signing roles
+STAGE_REQUIRED_ROLE: Dict[str, str] = {
+    "SUPERVISOR": "Supervisor",
+    "HOD": "HOD",
+    "HOI": "Dean",
+    "PRO_VC": "Pro-VC",
+    "VC": "Vice Chancellor",
+}
+
+
+def validate_notesheet_signing_authority(user_role: str, current_stage: str) -> None:
+    """
+    Enforces that only the designated authority for the current hierarchical
+    stage can sign, forward, or apply the final seal to a notesheet.
+    """
+    if user_role in ("Administrator", "Vice Chancellor"):
+        return   # VC and Super-Admin retain executive override privileges
+    expected_role = STAGE_REQUIRED_ROLE.get(current_stage.upper())
+    if not expected_role or user_role.upper() != expected_role.upper():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"Unauthorized signing attempt: Notesheet is currently at '{current_stage}' stage. "
+                f"Requires '{expected_role}' role credentials, but user has '{user_role}'."
+            ),
+        )
 
 
 def get_bearer_token(request: Request) -> str | None:

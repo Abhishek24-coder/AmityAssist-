@@ -12,8 +12,22 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from ..services.notesheet_service import NotesheetService, STAGE_HIERARCHY
-from ..services.notesheet_docx_service import generate_notesheet_docx
-from ..services.notesheet_pdf_service import generate_notesheet_pdf
+
+try:
+    from ..services.notesheet_docx_service import generate_notesheet_docx
+except ImportError:
+    generate_notesheet_docx = None
+
+try:
+    from ..services.notesheet_pdf_service import generate_notesheet_pdf
+except ImportError:
+    generate_notesheet_pdf = None
+
+from ..security.rbac import validate_notesheet_signing_authority
+
+# Ensure edit_field compatibility alias on NotesheetService
+if not hasattr(NotesheetService, "edit_field"):
+    NotesheetService.edit_field = NotesheetService.edit_notesheet_field
 
 router = APIRouter(prefix="/api/notesheets", tags=["Digital Notesheet"])
 
@@ -95,28 +109,73 @@ async def get_notesheet(id_or_ref: str):
         raise HTTPException(status_code=404, detail=str(e))
 
 
-@router.post("/{id_or_ref}/action", summary="Action Notesheet (Forward, Approve, Reject)")
-async def action_notesheet(id_or_ref: str, req: NotesheetActionRequest):
-    """Sign and forward/approve/reject a notesheet to progress along the hierarchy."""
+@router.post("/{id_or_ref}/action", summary="Sign & Advance Notesheet")
+async def action_notesheet(id_or_ref: str, req: NotesheetActionRequest, request: Request):
+    """
+    Signs and advances a notesheet to the next stage in the hierarchy.
+    Enforces Abhishek Shrivastava's Tier-Based Authority Rule.
+    """
+    # 1. Fetch current notesheet state
     try:
-        ns = NotesheetService.action_notesheet(
+        notesheet = NotesheetService.get_notesheet(id_or_ref)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    current_stage = notesheet.get("current_stage", "SUPERVISOR")
+
+    # 2. Enforce Role Authority check
+    role_map = {"HOI": "Dean", "VC": "Vice Chancellor"}
+    effective_role = role_map.get(req.role.strip(), req.role.strip()) if req.role else req.role
+    validate_notesheet_signing_authority(
+        user_role=effective_role,
+        current_stage=current_stage,
+    )
+
+    # 3. Process the hierarchical sign-off
+    try:
+        updated = NotesheetService.action_notesheet(
             id_or_ref=id_or_ref,
             officer_id=req.officer_id,
             officer_name=req.officer_name,
             role=req.role,
-            action=req.action,
+            action=req.action,  # "FORWARD", "APPROVE", or "REJECT"
             comments=req.comments,
         )
-        return {"success": True, "notesheet": ns}
-    except ValueError as e:
+        return {
+            "success": True,
+            "message": f"Notesheet signed and forwarded by {req.role} ({req.officer_name}).",
+            "notesheet": updated,
+        }
+    except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/{id_or_ref}/edit-field", summary="In-Flight Collaborative Edit")
 async def edit_notesheet_field(id_or_ref: str, req: NotesheetEditFieldRequest):
-    """Correct a typo, course code, or parameter in-flight with an audit annotation."""
+    """
+    Allows authorized senior officers (HOD, Dean, Pro-VC, VC) to correct minor
+    typos, wrong subject codes, or dates with an inline audit annotation.
+    """
+    # 1. Enforce that lower tiers cannot alter existing filed content
+    allowed_edit_roles = {"HOD", "Dean", "HOI", "Pro-VC", "Vice Chancellor", "VC", "Administrator"}
+    if req.officer_role not in allowed_edit_roles:
+        raise HTTPException(
+            status_code=403,
+            detail=f"In-Flight field corrections require HOD or higher authority. Role '{req.officer_role}' is not permitted.",
+        )
+
+    # 2. Mandatory audit justification check
+    if not req.reason or len(req.reason.strip()) < 5:
+        raise HTTPException(
+            status_code=400,
+            detail="A detailed audit reason is mandatory for in-flight corrections (e.g. 'Corrected course code from CS101 to CSE101').",
+        )
+
+    # 3. Apply modification with permanent annotation
     try:
-        ns = NotesheetService.edit_notesheet_field(
+        updated = NotesheetService.edit_field(
             id_or_ref=id_or_ref,
             officer_id=req.officer_id,
             officer_role=req.officer_role,
@@ -124,8 +183,12 @@ async def edit_notesheet_field(id_or_ref: str, req: NotesheetEditFieldRequest):
             new_value=req.new_value,
             reason=req.reason,
         )
-        return {"success": True, "notesheet": ns}
-    except ValueError as e:
+        return {
+            "success": True,
+            "message": f"Field '{req.field_name}' updated with audit annotation.",
+            "notesheet": updated,
+        }
+    except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -136,6 +199,9 @@ async def download_notesheet_docx(id_or_ref: str):
         ns = NotesheetService.get_notesheet(id_or_ref)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+    if generate_notesheet_docx is None:
+        raise HTTPException(status_code=500, detail="DOCX generation library (python-docx) is not installed.")
 
     docx_bytes = generate_notesheet_docx(ns)
     ref = ns.get("reference_no", id_or_ref)
@@ -155,6 +221,9 @@ async def download_notesheet_pdf(id_or_ref: str):
         ns = NotesheetService.get_notesheet(id_or_ref)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+    if generate_notesheet_pdf is None:
+        raise HTTPException(status_code=500, detail="PDF generation library is not installed.")
 
     pdf_bytes = generate_notesheet_pdf(ns)
     ref = ns.get("reference_no", id_or_ref)
